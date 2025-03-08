@@ -137,7 +137,6 @@ export function PriceChart({
             onMouseMove={handleChartMouseMove}
             onMouseUp={handleChartMouseUp}
             onClick={handleClickWrapper}
-            ref={svgRef}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
             <XAxis

@@ -1,4 +1,4 @@
-"/media/andrew/M.2/Projects/bitbucket/ODIN_Phantom_Bridge/norvi_enet_cpp/.gitignore/media/andrew/M.2/Projects/bitbucket/ODIN_Phantom_Bridge/norvi_enet_cpp/.gitignoreimport" * as React from "react"
+import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
