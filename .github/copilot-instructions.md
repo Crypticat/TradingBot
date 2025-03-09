@@ -1,5 +1,7 @@
 This project has a frontend web UI that is Next.js 14.2.7b and Tailwind. I have installed shadcn ui components. The frontend uses FastAPI to connect to enpoints on the backend. The backend is Python based.
 
+the application frontend is located in ./frontend/tradingbot
+
 Keep dark theme for all Web UI components
 Make sure the front end looks beautiful
 
