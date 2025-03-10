@@ -92,8 +92,9 @@
   }
 }
 
-_backdrop--blur__safari{
-      -webkit-backdrop-filter: blur(6px);
+._backdrop--blur__safari {
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
 }
 
 /* Firefox */
