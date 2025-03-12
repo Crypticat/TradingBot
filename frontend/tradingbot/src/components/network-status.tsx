@@ -49,7 +49,7 @@ export function NetworkStatus() {
     checkApiConnection();
     
     // Check API connection periodically
-    const intervalId = setInterval(checkApiConnection, 30000);
+    const intervalId = setInterval(checkApiConnection, 3000);
     
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -78,13 +78,13 @@ export function NetworkStatus() {
                   <>
                     <span className="animate-pulse size-2 rounded-full bg-green-500 mr-1"></span>
                     <Wifi className="h-3 w-3 mr-1" />
-                    API Connected
+                    Online
                   </>
                 ) : (
                   <>
                     <span className="animate-pulse size-2 rounded-full bg-amber-500 mr-1"></span>
                     <Wifi className="h-3 w-3 mr-1" />
-                    API {checking ? "Checking" : "Disconnected"}
+                    {checking ? "Checking" : "Offline"}
                   </>
                 )
               ) : (

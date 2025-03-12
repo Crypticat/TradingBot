@@ -77,6 +77,11 @@ export default function Sidebar() {
           </Link>
         </div>
 
+        {/* Nav Items */}
+        <div className="px-3 mb-1">
+          <h3 className="text-xs font-medium text-muted-foreground px-3 mb-2">BACKEND</h3>
+        </div>
+
         {/* Network Status - added below logo */}
         <div className="px-4 mb-4">
           <NetworkStatus />
