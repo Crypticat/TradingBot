@@ -14,6 +14,89 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+@router.get("/orderbook")
+async def get_order_book(
+    symbol: str = Query(..., description="Trading pair symbol (e.g., XBTZAR)")
+):
+    """
+    Get the current order book for a cryptocurrency pair
+    """
+    try:
+        try:
+            # Create a Luno client without API keys since they're not required for public endpoints
+            from luno_python.client import Client as LunoClient
+            luno_client = LunoClient()
+            
+            # Get order book data from Luno
+            order_book = luno_client.get_order_book(pair=symbol)
+            if order_book:
+                return {
+                    "timestamp": datetime.now().isoformat(),
+                    "pair": symbol,
+                    "asks": order_book.get("asks", []),
+                    "bids": order_book.get("bids", [])
+                }
+        except Exception as e:
+            logger.warning(f"Failed to get order book from Luno API: {e}. Falling back to mock data.")
+            # Continue to mock data if Luno API fails
+        
+        # If Luno API fails, generate mock order book
+        return generate_mock_order_book(symbol)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching order book: {str(e)}")
+
+def generate_mock_order_book(symbol: str) -> dict:
+    """
+    Generate mock order book data
+    """
+    # Get a base price for the symbol to build realistic order book around
+    prices = PriceStorage.get_prices(symbol, "1h")
+    if prices and len(prices) > 0:
+        base_price = prices[-1]["price"]  # Use last known price
+    else:
+        # Set base price based on symbol if no price history
+        if "XBT" in symbol:
+            base_price = 42000.0
+        elif "ETH" in symbol:
+            base_price = 3200.0
+        elif "XRP" in symbol:
+            base_price = 0.58
+        elif "SOL" in symbol:
+            base_price = 95.0
+        else:
+            base_price = 100.0
+    
+    # Generate asks (sell orders) - slightly above base price
+    asks = []
+    current_ask = base_price * 1.001  # Start 0.1% above base price
+    for i in range(10):  # Generate 10 ask levels
+        volume = round(random.uniform(0.01, 2.0), 6)
+        asks.append({
+            "price": str(round(current_ask, 2)),
+            "volume": str(volume)
+        })
+        # Increase price by 0.1-0.3% for next level
+        current_ask *= (1 + random.uniform(0.001, 0.003))
+    
+    # Generate bids (buy orders) - slightly below base price
+    bids = []
+    current_bid = base_price * 0.999  # Start 0.1% below base price
+    for i in range(10):  # Generate 10 bid levels
+        volume = round(random.uniform(0.01, 2.0), 6)
+        bids.append({
+            "price": str(round(current_bid, 2)),
+            "volume": str(volume)
+        })
+        # Decrease price by 0.1-0.3% for next level
+        current_bid *= (1 - random.uniform(0.001, 0.003))
+    
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "pair": symbol,
+        "asks": asks,
+        "bids": bids
+    }
+
 @router.get("/historical", response_model=List[CryptoPrice])
 async def get_historical_prices(
     symbol: str = Query(..., description="Trading pair symbol (e.g., XBTZAR)"),
