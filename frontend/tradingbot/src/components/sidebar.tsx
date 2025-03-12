@@ -15,6 +15,7 @@ import {
   LogOut
 } from "lucide-react";
 import { MobileNav } from "./mobile-nav";
+import { NetworkStatus } from "@/components/network-status";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -76,13 +77,11 @@ export default function Sidebar() {
           </Link>
         </div>
 
-        {/* Status Indicator */}
-        <div className="px-3 py-4">
-          <div className="flex items-center px-3 py-1.5">
-            <div className="size-2 rounded-full bg-green-500 animate-pulse mr-2"></div>
-            <span className="text-xs text-muted-foreground">API Connected</span>
-          </div>
+        {/* Network Status - added below logo */}
+        <div className="px-4 mb-4">
+          <NetworkStatus />
         </div>
+
 
         {/* Nav Items */}
         <div className="px-3 mb-1">
