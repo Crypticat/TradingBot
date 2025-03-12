@@ -130,14 +130,6 @@ export default function Sidebar() {
         {/* Bottom Actions */}
         <div className="mt-auto p-4 border-t border-border">
           <Button 
-            variant="outline" 
-            className="w-full gap-2 justify-start mb-2" 
-            size="sm"
-          >
-            <LucideGlobe className="h-4 w-4" />
-            <span>Connect to Luno</span>
-          </Button>
-          <Button 
             variant="ghost" 
             className="w-full gap-2 justify-start" 
             size="sm"
