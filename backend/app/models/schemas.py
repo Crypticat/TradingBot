@@ -54,7 +54,7 @@ class ApiKeyConfig(BaseModel):
 
 class TradingConfig(BaseModel):
     """Schema for trading configuration"""
-    model_id: str
+    trading_model_id: str
     symbol: str
     live: bool = False
     

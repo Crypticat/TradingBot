@@ -2,15 +2,21 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 from datetime import datetime, timedelta
 import random
+import logging
 
 from ..models.schemas import CryptoPrice
-from ..utils.storage import PriceStorage
+from ..utils.storage import PriceStorage, ApiKeyStorage
+from ..services.luno_api import create_luno_api
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 @router.get("/historical", response_model=List[CryptoPrice])
 async def get_historical_prices(
-    symbol: str = Query(..., description="Trading pair symbol (e.g., BTC-USD)"),
+    symbol: str = Query(..., description="Trading pair symbol (e.g., XBTZAR)"),
     interval: str = Query(..., description="Time interval (e.g., 1h, 4h, 1d)"),
     from_time: Optional[str] = Query(None, alias="from", description="Start time (ISO format)"),
     to_time: Optional[str] = Query(None, alias="to", description="End time (ISO format)")
@@ -19,7 +25,42 @@ async def get_historical_prices(
     Get historical price data for a cryptocurrency pair
     """
     try:
-        # First check if we have cached data
+        # Try to get data from Luno if API keys are configured
+        api_keys = ApiKeyStorage.get_api_keys()
+        if api_keys.get("luno_api_key") and api_keys.get("luno_api_secret"):
+            try:
+                # Format to match Luno API requirements
+                # Convert interval string to seconds
+                interval_seconds = convert_interval_to_seconds(interval)
+                
+                luno_client = create_luno_api(
+                    api_key=api_keys["luno_api_key"],
+                    api_secret=api_keys["luno_api_secret"]
+                )
+                
+                # Attempt to get data from Luno API
+                # Note: Depending on the actual API capabilities, this might need adjustment
+                candle_data = luno_client.get_candles(
+                    pair=symbol,
+                    since=from_time,
+                    duration=interval_seconds
+                )
+                
+                if candle_data and len(candle_data.get('candles', [])) > 0:
+                    # Process candle data to match our schema
+                    return process_candle_data(candle_data.get('candles', []))
+                
+                # Fall back to trade data if candles aren't available
+                trades = luno_client.get_trades(pair=symbol, since=from_time)
+                if trades and 'trades' in trades and len(trades['trades']) > 0:
+                    # Process trade data into price points
+                    return process_trade_data(trades.get('trades', []), interval_seconds)
+            
+            except Exception as e:
+                logger.warning(f"Failed to get data from Luno API: {e}. Falling back to cached/mock data.")
+                # Continue to cached/mock data if Luno API fails
+        
+        # Check if we have cached data
         prices = PriceStorage.get_prices(symbol, interval)
         
         # If no cached data, generate mock data
@@ -45,16 +86,34 @@ async def get_historical_prices(
 
 @router.get("/live", response_model=CryptoPrice)
 async def get_live_price(
-    symbol: str = Query(..., description="Trading pair symbol (e.g., BTC-USD)")
+    symbol: str = Query(..., description="Trading pair symbol (e.g., XBTZAR)")
 ):
     """
     Get current live price for a cryptocurrency pair
     """
     try:
-        # In a real implementation, this would fetch from Luno API
-        # For now, we'll generate a realistic current price
+        # Try to get live price from Luno if API keys are configured
+        api_keys = ApiKeyStorage.get_api_keys()
+        if api_keys.get("luno_api_key") and api_keys.get("luno_api_secret"):
+            try:
+                luno_client = create_luno_api(
+                    api_key=api_keys["luno_api_key"],
+                    api_secret=api_keys["luno_api_secret"]
+                )
+                
+                # Get ticker data from Luno
+                ticker = luno_client.get_ticker(pair=symbol)
+                if ticker and 'last_trade' in ticker:
+                    return {
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "price": float(ticker['last_trade']),
+                        "volume": float(ticker.get('rolling_24_hour_volume', 0))
+                    }
+            except Exception as e:
+                logger.warning(f"Failed to get live price from Luno API: {e}. Falling back to cached/mock data.")
+                # Continue to cached/mock data if Luno API fails
         
-        # Get historical data to base our live price on
+        # If Luno API fails or keys aren't configured, fall back to cached/mock data
         prices = PriceStorage.get_prices(symbol, "1h")
         
         if not prices:
@@ -103,7 +162,7 @@ def generate_mock_price_data(symbol: str, interval: str) -> List[dict]:
         data_points = 24  # Default to 24 hours of hourly data
     
     # Set base price based on symbol
-    if "BTC" in symbol:
+    if "XBT" in symbol:
         base_price = 42000.0
         volatility = 0.02  # 2% volatility
     elif "ETH" in symbol:
@@ -142,3 +201,83 @@ def generate_mock_price_data(symbol: str, interval: str) -> List[dict]:
         })
     
     return prices
+
+def convert_interval_to_seconds(interval: str) -> int:
+    """
+    Convert interval string (e.g., '1h', '4h', '1d') to seconds
+    """
+    if interval.endswith('m'):
+        return int(interval[:-1]) * 60
+    elif interval.endswith('h'):
+        return int(interval[:-1]) * 3600
+    elif interval.endswith('d'):
+        return int(interval[:-1]) * 86400
+    else:
+        return 3600  # Default to 1 hour
+
+def process_candle_data(candles: List[dict]) -> List[dict]:
+    """
+    Process Luno candle data to match our schema
+    """
+    result = []
+    for candle in candles:
+        result.append({
+            "time": candle.get("timestamp", ""),
+            "price": float(candle.get("close", 0)),
+            "volume": float(candle.get("volume", 0))
+        })
+    return result
+
+def process_trade_data(trades: List[dict], interval_seconds: int) -> List[dict]:
+    """
+    Process Luno trade data into aggregated price points based on the interval
+    """
+    if not trades:
+        return []
+    
+    # Group trades by time interval
+    grouped_trades = {}
+    for trade in trades:
+        timestamp = trade.get("timestamp", "")
+        if not timestamp:
+            continue
+            
+        # Parse timestamp and round to interval
+        try:
+            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            interval_start = dt.replace(
+                microsecond=0,
+                second=0,
+                minute=(dt.minute // (interval_seconds // 60)) * (interval_seconds // 60)
+            )
+            key = interval_start.strftime("%Y-%m-%dT%H:%M:%S")
+            
+            if key not in grouped_trades:
+                grouped_trades[key] = {
+                    "prices": [],
+                    "volumes": [],
+                    "time": key
+                }
+                
+            grouped_trades[key]["prices"].append(float(trade.get("price", 0)))
+            grouped_trades[key]["volumes"].append(float(trade.get("volume", 0)))
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Error parsing trade timestamp {timestamp}: {e}")
+            continue
+    
+    # Calculate average price and total volume for each interval
+    result = []
+    for key, data in grouped_trades.items():
+        if data["prices"]:
+            avg_price = sum(data["prices"]) / len(data["prices"])
+            total_volume = sum(data["volumes"])
+            
+            result.append({
+                "time": data["time"],
+                "price": round(avg_price, 2),
+                "volume": round(total_volume, 2)
+            })
+    
+    # Sort by time
+    result.sort(key=lambda x: x["time"])
+    return result
