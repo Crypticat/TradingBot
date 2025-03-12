@@ -28,9 +28,21 @@ import {
   BarChart3,
   Bot,
   ExternalLink,
+  CalendarIcon,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DateRange } from "react-day-picker";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 
 // Sample data for the chart
 const data = [
@@ -62,6 +74,14 @@ export default function Home() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [selectedInterval, setSelectedInterval] = useState("1h");
+  const [date, setDate] = useState<DateRange | undefined>({
+    from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
+    to: new Date(),
+  });
+  const [chartData, setChartData] = useState(data);
+  const [isChartLoading, setIsChartLoading] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState("BTC/USD");
 
   // Fix for hydration errors - only render client-specific components after hydration
   useEffect(() => {
@@ -76,6 +96,48 @@ export default function Home() {
       setIsRefreshing(false);
     }, 1500);
   };
+
+  // Function to fetch historical price data
+  const fetchHistoricalData = useCallback(async () => {
+    if (!selectedSymbol || !selectedInterval || !date?.from) return;
+    
+    setIsChartLoading(true);
+    
+    try {
+      const fromISO = date.from.toISOString();
+      const toISO = date.to ? date.to.toISOString() : new Date().toISOString();
+      
+      const response = await fetch(`/api/prices/historical?symbol=${selectedSymbol}&interval=${selectedInterval}&from=${fromISO}&to=${toISO}`);
+      
+      if (!response.ok) {
+        throw new Error(`Error fetching data: ${response.status}`);
+      }
+      
+      const historicalData = await response.json();
+      
+      // Transform data to match chart format
+      const formattedData = historicalData.map(item => ({
+        time: item.time.substring(11, 16), // Extract HH:MM from ISO
+        price: item.price,
+        volume: item.volume || 0
+      }));
+      
+      setChartData(formattedData.length > 0 ? formattedData : data);
+    } catch (error) {
+      console.error("Failed to fetch historical data:", error);
+      // Fall back to sample data
+      setChartData(data);
+    } finally {
+      setIsChartLoading(false);
+    }
+  }, [selectedSymbol, selectedInterval, date]);
+
+  // Fetch data when parameters change
+  useEffect(() => {
+    if (mounted) {
+      fetchHistoricalData();
+    }
+  }, [fetchHistoricalData, mounted]);
 
   // Don't render anything until after hydration to prevent mismatch
   if (!mounted) {
@@ -239,19 +301,88 @@ export default function Home() {
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <div>
                   <CardTitle>Market Overview</CardTitle>
-                  <CardDescription>BTC/USD recent performance</CardDescription>
+                  <CardDescription>{selectedSymbol} recent performance</CardDescription>
                 </div>
                 {isClient && (
-                  <DropdownSelector 
-                    options={["BTC/USD", "ETH/USD", "XRP/USD", "SOL/USD"]} 
-                    defaultValue="BTC/USD" 
-                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Select 
+                      value={selectedSymbol} 
+                      onValueChange={setSelectedSymbol}
+                    >
+                      <SelectTrigger className="w-[130px]">
+                        <SelectValue placeholder="Select pair" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="BTC/USD">BTC/USD</SelectItem>
+                        <SelectItem value="ETH/USD">ETH/USD</SelectItem>
+                        <SelectItem value="XRP/USD">XRP/USD</SelectItem>
+                        <SelectItem value="SOL/USD">SOL/USD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
+                    <Select 
+                      value={selectedInterval} 
+                      onValueChange={setSelectedInterval}
+                    >
+                      <SelectTrigger className="w-[100px]">
+                        <SelectValue placeholder="Interval" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5m">5 min</SelectItem>
+                        <SelectItem value="15m">15 min</SelectItem>
+                        <SelectItem value="1h">1 hour</SelectItem>
+                        <SelectItem value="4h">4 hours</SelectItem>
+                        <SelectItem value="1d">1 day</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "justify-start text-left font-normal w-[150px]",
+                            !date && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {date?.from ? (
+                            date.to ? (
+                              <>
+                                {format(date.from, "MMM dd")} -{" "}
+                                {format(date.to, "MMM dd")}
+                              </>
+                            ) : (
+                              format(date.from, "MMM dd, yyyy")
+                            )
+                          ) : (
+                            <span>Pick a date</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <CalendarComponent
+                          initialFocus
+                          mode="range"
+                          defaultMonth={date?.from}
+                          selected={date}
+                          onSelect={setDate}
+                          numberOfMonths={2}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 )}
               </CardHeader>
               <CardContent>
-                <div className="h-[350px] w-full">
+                <div className="h-[350px] w-full relative">
+                  {isChartLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+                      <div className="animate-spin size-8 border-4 border-primary border-t-transparent rounded-full"></div>
+                    </div>
+                  )}
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={data}>
+                    <LineChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
                       <XAxis 
                         dataKey="time" 
@@ -264,6 +395,7 @@ export default function Home() {
                         tickLine={false}
                         axisLine={{ stroke: "#374151" }}
                         tickFormatter={(value) => `$${value.toLocaleString()}`}
+                        domain={['auto', 'auto']}
                       />
                       <Tooltip 
                         contentStyle={{ 
@@ -272,7 +404,7 @@ export default function Home() {
                           borderRadius: "8px",
                           boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)"
                         }} 
-                        formatter={(value) => [`$${value.toLocaleString()}`, "Price"]}
+                        formatter={(value) => [`$${Number(value).toLocaleString()}`, "Price"]}
                         labelStyle={{ color: "#9ca3af" }}
                       />
                       <ReferenceLine 
@@ -299,10 +431,10 @@ export default function Home() {
                 </div>
               </CardContent>
               <CardFooter className="flex justify-between border-t pt-4 text-sm">
-                <span className="text-muted-foreground">Last updated: Today, 12:45 PM</span>
-                <Button variant="outline" size="sm" className="gap-1">
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  View Full Chart
+                <span className="text-muted-foreground">Last updated: {new Date().toLocaleString()}</span>
+                <Button variant="outline" size="sm" className="gap-1" onClick={fetchHistoricalData}>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Refresh Data
                 </Button>
               </CardFooter>
             </Card>
