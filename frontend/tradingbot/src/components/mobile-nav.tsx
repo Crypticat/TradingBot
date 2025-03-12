@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,11 @@ import {
 export function MobileNav() {
   const [open, setOpen] = React.useState(false);
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   const routes = [
     { href: "/", label: "Dashboard", icon: Home },
@@ -35,6 +41,11 @@ export function MobileNav() {
     { href: "/production", label: "Production", icon: Play },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
+  
+  // Don't render until client-side
+  if (!mounted) {
+    return null;
+  }
   
   return (
     <Sheet open={open} onOpenChange={setOpen}>

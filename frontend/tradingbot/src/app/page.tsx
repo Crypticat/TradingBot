@@ -61,10 +61,12 @@ const modelData = [
 export default function Home() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   // Fix for hydration errors - only render client-specific components after hydration
   useEffect(() => {
     setIsClient(true);
+    setMounted(true);
   }, []);
 
   const handleRefresh = () => {
@@ -74,6 +76,11 @@ export default function Home() {
       setIsRefreshing(false);
     }, 1500);
   };
+
+  // Don't render anything until after hydration to prevent mismatch
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -422,6 +429,13 @@ export default function Home() {
 // Dropdown selector component for chart timeframes
 function DropdownSelector({ options, defaultValue }) {
   const [selected, setSelected] = useState(defaultValue);
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  if (!mounted) return null;
   
   return (
     <div className="relative">

@@ -1,4 +1,5 @@
 "use client";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,11 @@ import { MobileNav } from "./mobile-nav";
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   const routes = [
     { href: "/", label: "Dashboard", icon: Home },
@@ -25,6 +31,10 @@ export default function Sidebar() {
     { href: "/production", label: "Production", icon: Play },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <>

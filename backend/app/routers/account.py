@@ -132,37 +132,78 @@ async def get_markets():
     """
     Get available trading pairs from Luno
     """
-    api_keys = ApiKeyStorage.get_api_keys()
-    if not api_keys.get("luno_api_key") or not api_keys.get("luno_api_secret"):
-        # Return default markets if no API keys are configured
-        return {
-            "markets": [
-                {"pair": "XBTZAR", "base_currency": "XBT", "counter_currency": "ZAR"},
-                {"pair": "ETHZAR", "base_currency": "ETH", "counter_currency": "ZAR"},
-                {"pair": "XBTUSDC", "base_currency": "XBT", "counter_currency": "USDC"},
-                {"pair": "ETHUSDC", "base_currency": "ETH", "counter_currency": "USDC"}
-            ]
-        }
-    
     try:
-        luno_client = create_luno_api(
-            api_key=api_keys["luno_api_key"],
-            api_secret=api_keys["luno_api_secret"]
-        )
+        # First try to get markets without authentication as it's a public endpoint
+        from luno_python.client import Client as LunoClient
+        luno_client = LunoClient()
         
-        # Get markets from Luno API
-        markets = luno_client.get_markets()
-        return {"markets": markets}
+        # Try to get tickers which contains all available pairs
+        try:
+            tickers_response = luno_client.get_tickers()
+            if tickers_response and "tickers" in tickers_response and len(tickers_response["tickers"]) > 0:
+                # Convert tickers to markets format
+                markets = []
+                for ticker in tickers_response["tickers"]:
+                    pair = ticker.get("pair", "")
+                    if pair:
+                        # Extract base and counter currencies from the pair
+                        # Assuming standard Luno format like XBTZAR, ETHUSDC
+                        base_currency = ""
+                        counter_currency = ""
+                        
+                        if "XBT" in pair:
+                            base_currency = "XBT"
+                            counter_currency = pair.replace("XBT", "")
+                        elif "ETH" in pair:
+                            base_currency = "ETH"
+                            counter_currency = pair.replace("ETH", "")
+                        elif "XRP" in pair:
+                            base_currency = "XRP"
+                            counter_currency = pair.replace("XRP", "")
+                        else:
+                            # Try to determine base/counter for other pairs
+                            # This is a simplified approach and might need refinement
+                            for currency in ["SOL", "LTC", "BCH", "USDC", "ZAR", "USD"]:
+                                if currency in pair:
+                                    if not counter_currency:
+                                        counter_currency = currency
+                                        base_currency = pair.replace(currency, "")
+                        
+                        markets.append({
+                            "pair": pair,
+                            "base_currency": base_currency,
+                            "counter_currency": counter_currency
+                        })
+                
+                return {"markets": markets}
+        except Exception as e:
+            # Fall back to authenticated method if public fails
+            pass
+        
+        # If public endpoint didn't work, try with authentication
+        api_keys = ApiKeyStorage.get_api_keys()
+        if api_keys.get("luno_api_key") and api_keys.get("luno_api_secret"):
+            luno_client = create_luno_api(
+                api_key=api_keys["luno_api_key"],
+                api_secret=api_keys["luno_api_secret"]
+            )
+            
+            # Get markets from Luno API
+            markets = luno_client.get_markets()
+            return {"markets": markets}
     except Exception as e:
-        # Fallback to default markets
-        return {
-            "markets": [
-                {"pair": "XBTZAR", "base_currency": "XBT", "counter_currency": "ZAR"},
-                {"pair": "ETHZAR", "base_currency": "ETH", "counter_currency": "ZAR"},
-                {"pair": "XBTUSDC", "base_currency": "XBT", "counter_currency": "USDC"},
-                {"pair": "ETHUSDC", "base_currency": "ETH", "counter_currency": "USDC"}
-            ]
-        }
+        # Log the exception but continue to default markets
+        pass
+        
+    # Fallback to default markets if both methods fail
+    return {
+        "markets": [
+            {"pair": "XBTZAR", "base_currency": "XBT", "counter_currency": "ZAR"},
+            {"pair": "ETHZAR", "base_currency": "ETH", "counter_currency": "ZAR"},
+            {"pair": "XBTUSDC", "base_currency": "XBT", "counter_currency": "USDC"},
+            {"pair": "ETHUSDC", "base_currency": "ETH", "counter_currency": "USDC"}
+        ]
+    }
 
 def validate_api_keys(api_key: str, api_secret: str) -> bool:
     """

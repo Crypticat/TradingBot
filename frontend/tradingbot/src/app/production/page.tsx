@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -30,10 +30,21 @@ export default function ProductionPage() {
   const [isLive, setIsLive] = useState(false);
   const [selectedModel, setSelectedModel] = useState("model-1");
   const [balance, setBalance] = useState({ fiat: 5000, crypto: 0.2 });
+  const [mounted, setMounted] = useState(false);
+
+  // Fix for hydration errors
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleToggleLive = () => {
     setIsLive(!isLive);
   };
+
+  // Prevent hydration mismatch by not rendering until client-side
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <main className="container mx-auto p-4 md:p-6">

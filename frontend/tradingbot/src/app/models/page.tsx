@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -124,6 +124,12 @@ export default function ModelsPage() {
   const [isCreatingModel, setIsCreatingModel] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
+  const [mounted, setMounted] = useState(false);
+
+  // Fix for hydration errors
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const selectedModel = models.find(model => model.id === selectedModelId);
 
@@ -155,6 +161,11 @@ export default function ModelsPage() {
       </Badge>
     );
   };
+
+  // Don't render until client-side
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <main className="responsive-container">

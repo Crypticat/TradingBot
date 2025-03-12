@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -72,6 +72,12 @@ export default function AnalyticsPage() {
     start: null, 
     end: null
   });
+  const [mounted, setMounted] = useState(false);
+
+  // Fix hydration issues by only rendering after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Handle chart click for point labeling
   const handleChartClick = (data: any) => {
@@ -147,6 +153,11 @@ export default function AnalyticsPage() {
       default: return '#3b82f6';
     }
   };
+
+  // Prevent hydration mismatch by not rendering until client-side
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <main className="responsive-container">
