@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
   
   try {
     // Proxy to backend - Add the /api/ prefix to the endpoint
+    // This is a public endpoint, so we don't need authentication
     const backendUrl = new URL(`${process.env.BACKEND_URL || 'http://localhost:8000'}/api/prices/historical`);
     
     if (formattedSymbol) backendUrl.searchParams.append("symbol", formattedSymbol);

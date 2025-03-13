@@ -123,11 +123,15 @@ async def get_historical_prices(
                 
                 # Attempt to get data from Luno API
                 # Note: Depending on the actual API capabilities, this might need adjustment
+                print(f"Fetching data from Luno for {symbol} with interval {interval} and duration {interval_seconds} seconds")
+                # Get candle data from Luno
                 candle_data = luno_client.get_candles(
                     pair=symbol,
                     since=from_time,
                     duration=interval_seconds
                 )
+
+                print(f"Received candle data")
                 
                 if candle_data and len(candle_data.get('candles', [])) > 0:
                     # Process candle data to match our schema

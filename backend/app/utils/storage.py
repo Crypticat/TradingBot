@@ -18,6 +18,7 @@ def save_to_file(data: Any, filename: str) -> None:
 def load_from_file(filename: str, default: Any = None) -> Any:
     """Load data from a JSON file"""
     file_path = DATA_DIR / filename
+    print(f"Loading data from {file_path}")
     if not file_path.exists():
         return default
     with open(file_path, "r") as f:
@@ -109,6 +110,7 @@ class ApiKeyStorage:
     @classmethod
     def get_api_keys(cls) -> Dict:
         """Get API keys"""
+        print(f"Loading API keys from {cls.FILENAME}")
         return load_from_file(cls.FILENAME, {})
 
 class PriceStorage:

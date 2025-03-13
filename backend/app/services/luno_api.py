@@ -2,6 +2,7 @@
 Service for integrating with the Luno API using luno-python library
 """
 from typing import Dict, List, Optional, Any
+from datetime import datetime
 import logging
 import luno_python.client as luno
 
@@ -18,7 +19,7 @@ class LunoAPI:
         """Initialize with API credentials"""
         self.api_key = api_key
         self.api_secret = api_secret
-        self.client = luno.Client(api_key=api_key, api_key_secret=api_secret)
+        self.client = luno.Client(api_key_id=api_key, api_key_secret=api_secret)
     
     def get_balance(self) -> Dict[str, Any]:
         """Get account balances"""
@@ -58,7 +59,8 @@ class LunoAPI:
             params = {'pair': pair}
             if since:
                 params['since'] = since
-            return self.client.get_trades(pair=pair, since=since)
+            return self.client.list_trades(pair=pair, since=since)
+        # get_trades(pair=pair, since=since)
         except Exception as e:
             logger.error(f"Error getting trades for {pair}: {str(e)}")
             raise Exception(f"Error connecting to Luno API: {str(e)}")
@@ -120,30 +122,39 @@ class LunoAPI:
             # Note: This is a workaround as luno-python doesn't have a direct method for candles
             # In a real implementation, you'd add proper handling for different durations
             # and convert it to the format the frontend expects
-            return {
-                'pair': pair,
-                'candles': self._fetch_candles_from_trades(pair, since, duration)
-            }
+            # Convert timestamp to milliseconds if it's a string
+            timestamp_str = "2025-03-12T00:00:00Z"  # Example timestamp
+            # Convert timestamp to milliseconds since epoch
+            dt = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%SZ")
+            milliseconds_since_epoch = int(dt.timestamp() * 1000)
+            
+            print(f"Milliseconds since epoch: {milliseconds_since_epoch}")
+
+            candles = self.client.get_candles(duration=duration, pair=pair, since=milliseconds_since_epoch)
+
+            # Candle data example {'pair': 'XBTZAR', 'duration': 3600, 'candles': [{'timestamp': 1741730400000, 'open': '1546045.00', 'close': '1546254.00', 'high': '1547946.00', 'low': '1542462.00', 'volume': '1.008246'}]}
+
+            return candles
         except Exception as e:
             logger.error(f"Error getting candles for {pair}: {str(e)}")
             raise Exception(f"Error connecting to Luno API: {str(e)}")
     
-    def _fetch_candles_from_trades(self, pair: str, since: Optional[str] = None, duration: int = 60) -> List[Dict]:
-        """
-        Build candles from trade data (helper method)
-        This is a simplified implementation; in a real app, you'd implement proper OHLC calculation
-        """
-        # Get trades and process them into candles
-        trades = self.get_trades(pair, since)
-        if 'trades' not in trades:
-            return []
+    # def _fetch_candles_from_trades(self, pair: str, since: Optional[str] = None, duration: int = 60) -> List[Dict]:
+    #     """
+    #     Build candles from trade data (helper method)
+    #     This is a simplified implementation; in a real app, you'd implement proper OHLC calculation
+    #     """
+    #     # Get trades and process them into candles
+    #     trades = self.get_trades(pair, since)
+    #     if 'trades' not in trades:
+    #         return []
             
-        # Logic to process trades into candles would go here
-        # This is simplified example code
-        candles = []
-        # Process logic would group trades by time intervals and calculate OHLC
+    #     # Logic to process trades into candles would go here
+    #     # This is simplified example code
+    #     candles = []
+    #     # Process logic would group trades by time intervals and calculate OHLC
         
-        return candles
+    #     return candles
 
 # Factory function to create a Luno API client
 def create_luno_api(api_key: str, api_secret: str) -> LunoAPI:
