@@ -10,18 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { 
-  LineChart, 
-  Line, 
-  CartesianGrid, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer, 
-  ReferenceDot,
-  ReferenceArea,
-  ReferenceLine
-} from 'recharts';
+import { PriceChart } from "@/components/price-chart";
+import { RecentTrades } from "@/components/recent-trades";
+import { fetchCandleData, createModel } from "@/services/api";
 import { 
   Save, 
   Trash, 
@@ -43,14 +34,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Sample data for the chart
-const data = Array.from({ length: 100 }, (_, i) => ({
-  time: `${Math.floor(i / 4)}:${(i % 4) * 15}`.padStart(4, '0'),
-  price: 40000 + Math.random() * 10000 - 5000 + (i * 50),
-  volume: Math.random() * 100 + 50,
-  rsi: Math.random() * 70 + 15
-}));
-
 // Technical indicators
 const technicalIndicators = [
   { id: 'rsi', name: 'RSI', color: '#ef4444' },
@@ -61,10 +44,11 @@ const technicalIndicators = [
 
 export default function AnalyticsPage() {
   const [labeledPoints, setLabeledPoints] = useState<{x: string, y: number, label: string}[]>([]);
-  const [selectedSymbol, setSelectedSymbol] = useState("BTC-USD");
+  const [selectedSymbol, setSelectedSymbol] = useState("XBTZAR");
   const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
   const [isTrainingModalOpen, setIsTrainingModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [chartData, setChartData] = useState<any[]>([]);
   const [selectedLabels, setSelectedLabels] = useState<number[]>([]);
   const [visibleIndicators, setVisibleIndicators] = useState<string[]>(['rsi']);
   const [chartMode, setChartMode] = useState<'selection' | 'labeling'>('labeling');
@@ -73,12 +57,52 @@ export default function AnalyticsPage() {
     end: null
   });
   const [mounted, setMounted] = useState(false);
+  const [modelName, setModelName] = useState("");
+  const [modelDescription, setModelDescription] = useState("");
+  const [advancedOptions, setAdvancedOptions] = useState(false);
 
   // Fix hydration issues by only rendering after mount
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // Load price data when symbol or timeframe changes
+  useEffect(() => {
+    if (mounted) {
+      loadPriceData();
+    }
+  }, [mounted, selectedSymbol, selectedTimeframe]);
+
+  const loadPriceData = async () => {
+    try {
+      setIsLoading(true);
+      // Use the new fetchCandleData function
+      const data = await fetchCandleData(
+        selectedSymbol, 
+        selectedTimeframe
+      );
+      
+      // Transform the data for the chart if needed
+      setChartData(data.map(item => ({
+        time: new Date(item.time).toLocaleString(),
+        price: item.price,
+        volume: item.volume,
+        open: item.open,
+        high: item.high,
+        low: item.low,
+        // Add mock indicator data for demo
+        rsi: Math.random() * 70 + 15,
+        macd: Math.random() * 20 - 10,
+        sma: item.price * (1 + (Math.random() * 0.05 - 0.025)),
+        ema: item.price * (1 + (Math.random() * 0.03 - 0.015)),
+      })));
+    } catch (error) {
+      console.error('Error loading price data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
   // Handle chart click for point labeling
   const handleChartClick = (data: any) => {
     if (chartMode !== 'labeling' || !data || !data.activePayload) return;
@@ -134,14 +158,34 @@ export default function AnalyticsPage() {
     }
   };
 
-  const handleTrainModel = () => {
+  const handleTrainModel = async () => {
+    if (labeledPoints.length === 0 || !modelName) {
+      return;
+    }
+    
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const response = await createModel(
+        modelName,
+        modelDescription || `Model for ${selectedSymbol} - ${new Date().toISOString().split('T')[0]}`,
+        selectedSymbol,
+        labeledPoints
+      );
+      
+      // Show success message or redirect
       setIsTrainingModalOpen(false);
-      // Show success message, redirect, etc.
-    }, 2000);
+      // Reset form fields
+      setModelName("");
+      setModelDescription("");
+      setAdvancedOptions(false);
+      
+      // Optionally, redirect to models page
+      // router.push('/models');
+    } catch (error) {
+      console.error('Error training model:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Get point color based on label
@@ -179,10 +223,12 @@ export default function AnalyticsPage() {
                 <SelectValue placeholder="Select symbol" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="BTC-USD">BTC-USD</SelectItem>
-                <SelectItem value="ETH-USD">ETH-USD</SelectItem>
-                <SelectItem value="XRP-USD">XRP-USD</SelectItem>
-                <SelectItem value="SOL-USD">SOL-USD</SelectItem>
+                <SelectItem value="XBTZAR">XBT/ZAR</SelectItem>
+                <SelectItem value="ETHZAR">ETH/ZAR</SelectItem>
+                <SelectItem value="XRPZAR">XRP/ZAR</SelectItem>
+                <SelectItem value="SOLZAR">SOL/ZAR</SelectItem>
+                <SelectItem value="XBTUSDC">XBT/USDC</SelectItem>
+                <SelectItem value="ETHUSDC">ETH/USDC</SelectItem>
               </SelectContent>
             </Select>
             
@@ -206,226 +252,127 @@ export default function AnalyticsPage() {
           </div>
         </div>
         
-        {/* Chart Section */}
-        <Card className="card-gradient hover-card-effect">
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  {selectedSymbol} Price Chart
-                  <Badge variant="outline">{selectedTimeframe}</Badge>
-                </CardTitle>
-                <CardDescription>
-                  {chartMode === 'labeling' ? 
-                    'Click on the chart to label important points' : 
-                    'Click and drag to select a range for analysis'}
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="bg-muted rounded-md p-0.5 flex">
-                  <Button 
-                    variant={chartMode === 'labeling' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="rounded-sm h-8"
-                    onClick={() => setChartMode('labeling')}
-                  >
-                    <BookMarked className="h-4 w-4 mr-1" />
-                    Label
+        {/* Chart and Data Sections */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            {/* Chart Section */}
+            <Card className="card-gradient hover-card-effect">
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      {selectedSymbol} Price Chart
+                      <Badge variant="outline">{selectedTimeframe}</Badge>
+                    </CardTitle>
+                    <CardDescription>
+                      {chartMode === 'labeling' ? 
+                        'Click on the chart to label important points' : 
+                        'Click and drag to select a range for analysis'}
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-muted rounded-md p-0.5 flex">
+                      <Button 
+                        variant={chartMode === 'labeling' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="rounded-sm h-8"
+                        onClick={() => setChartMode('labeling')}
+                      >
+                        <BookMarked className="h-4 w-4 mr-1" />
+                        Label
+                      </Button>
+                      <Button 
+                        variant={chartMode === 'selection' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="rounded-sm h-8"
+                        onClick={() => setChartMode('selection')}
+                      >
+                        <ArrowLeftRight className="h-4 w-4 mr-1" />
+                        Select
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              
+              <CardContent className="pt-3">
+                <div className="mb-4 flex flex-wrap gap-2">
+                  {technicalIndicators.map(indicator => (
+                    <Button
+                      key={indicator.id}
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "h-7 gap-1 border-border",
+                        visibleIndicators.includes(indicator.id) && "bg-muted"
+                      )}
+                      onClick={() => toggleIndicator(indicator.id)}
+                    >
+                      {visibleIndicators.includes(indicator.id) ? (
+                        <Eye className="h-3 w-3" style={{ color: indicator.color }} />
+                      ) : (
+                        <EyeOff className="h-3 w-3 text-muted-foreground" />
+                      )}
+                      <span className={cn(
+                        visibleIndicators.includes(indicator.id) ? "" : "text-muted-foreground"
+                      )}>
+                        {indicator.name}
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+                
+                <div className="h-[450px] w-full chart-container">
+                  <PriceChart 
+                    data={chartData}
+                    isLoading={isLoading}
+                    onChartClick={handleChartClick}
+                    labeledPoints={labeledPoints}
+                  />
+                </div>
+              </CardContent>
+              
+              <CardFooter className="flex justify-between border-t">
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <ZoomIn className="h-4 w-4" />
+                    Reset View
                   </Button>
-                  <Button 
-                    variant={chartMode === 'selection' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="rounded-sm h-8"
-                    onClick={() => setChartMode('selection')}
-                  >
-                    <ArrowLeftRight className="h-4 w-4 mr-1" />
-                    Select
+                  <Button variant="outline" size="sm" className="gap-2" onClick={loadPriceData}>
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh Data
                   </Button>
                 </div>
-              </div>
-            </div>
-          </CardHeader>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="destructive" 
+                    size="sm" 
+                    onClick={() => setLabeledPoints([])}
+                    className="gap-2"
+                    disabled={labeledPoints.length === 0}
+                  >
+                    <Trash className="h-4 w-4" />
+                    Clear All
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    className="gap-2 btn-glow"
+                    disabled={labeledPoints.length === 0}
+                    onClick={() => setIsTrainingModalOpen(true)}
+                  >
+                    <GitBranchPlus className="h-4 w-4" />
+                    Train Model
+                  </Button>
+                </div>
+              </CardFooter>
+            </Card>
+          </div>
           
-          <CardContent className="pt-3">
-            <div className="mb-4 flex flex-wrap gap-2">
-              {technicalIndicators.map(indicator => (
-                <Button
-                  key={indicator.id}
-                  variant="outline"
-                  size="sm"
-                  className={cn(
-                    "h-7 gap-1 border-border",
-                    visibleIndicators.includes(indicator.id) && "bg-muted"
-                  )}
-                  onClick={() => toggleIndicator(indicator.id)}
-                >
-                  {visibleIndicators.includes(indicator.id) ? (
-                    <Eye className="h-3 w-3" style={{ color: indicator.color }} />
-                  ) : (
-                    <EyeOff className="h-3 w-3 text-muted-foreground" />
-                  )}
-                  <span className={cn(
-                    visibleIndicators.includes(indicator.id) ? "" : "text-muted-foreground"
-                  )}>
-                    {indicator.name}
-                  </span>
-                </Button>
-              ))}
-            </div>
-            
-            <div className="h-[450px] w-full chart-container">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart 
-                  data={data}
-                  onClick={handleChartClick}
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis 
-                    dataKey="time" 
-                    stroke="hsl(var(--muted-foreground))" 
-                    tickLine={false}
-                    axisLine={{ stroke: "hsl(var(--border))" }}
-                    padding={{ left: 10, right: 10 }}
-                  />
-                  <YAxis 
-                    stroke="hsl(var(--muted-foreground))" 
-                    tickLine={false}
-                    axisLine={{ stroke: "hsl(var(--border))" }}
-                    domain={['auto', 'auto']}
-                  />
-                  
-                  {/* Add secondary Y-axis for indicators */}
-                  {visibleIndicators.includes('rsi') && (
-                    <YAxis 
-                      yAxisId={1}
-                      orientation="right"
-                      stroke="#ef4444"
-                      tickLine={false}
-                      axisLine={false}
-                      domain={[0, 100]}
-                      ticks={[0, 30, 70, 100]}
-                      tickFormatter={(value) => `${value}`}
-                      width={30}
-                      tick={{ fontSize: 10 }}
-                    />
-                  )}
-                  
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: "hsl(var(--popover))", 
-                      border: "none",
-                      borderRadius: "8px",
-                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)"
-                    }}
-                    labelStyle={{ color: "hsl(var(--muted-foreground))" }}
-                    formatter={(value, name) => {
-                      if (name === 'rsi') return [`${value}`, 'RSI'];
-                      return [`$${Number(value).toLocaleString()}`, 'Price'];
-                    }}
-                    animationDuration={200}
-                  />
-                  
-                  {/* Main price line */}
-                  <Line 
-                    type="monotone" 
-                    dataKey="price" 
-                    stroke="hsl(var(--primary))" 
-                    strokeWidth={2} 
-                    dot={false}
-                    animationDuration={500}
-                    activeDot={{ r: 6, fill: "hsl(var(--primary))", stroke: "hsl(var(--background))" }}
-                    name="Price"
-                  />
-                  
-                  {/* Additional indicators */}
-                  {visibleIndicators.includes('rsi') && (
-                    <Line 
-                      type="monotone" 
-                      dataKey="rsi" 
-                      stroke="#ef4444" 
-                      strokeWidth={1.5}
-                      dot={false}
-                      opacity={0.8}
-                      yAxisId={1}
-                      name="rsi"
-                    />
-                  )}
-                  
-                  {/* Reference lines for RSI */}
-                  {visibleIndicators.includes('rsi') && (
-                    <>
-                      <ReferenceLine y={30} yAxisId={1} stroke="#ef4444" strokeDasharray="3 3" strokeOpacity={0.4} />
-                      <ReferenceLine y={70} yAxisId={1} stroke="#ef4444" strokeDasharray="3 3" strokeOpacity={0.4} />
-                    </>
-                  )}
-                  
-                  {/* Selection range */}
-                  {chartMode === 'selection' && selectionRange.start && selectionRange.end && (
-                    <ReferenceArea 
-                      x1={selectionRange.start} 
-                      x2={selectionRange.end} 
-                      strokeOpacity={0.3}
-                      fill="hsl(var(--primary))"
-                      fillOpacity={0.2}
-                    />
-                  )}
-                  
-                  {/* Labeled points */}
-                  {labeledPoints.map((point, index) => (
-                    <ReferenceDot
-                      key={index}
-                      x={point.x}
-                      y={point.y}
-                      r={6}
-                      fill={getPointColor(point.label)}
-                      stroke="#ffffff"
-                      strokeWidth={1.5}
-                      strokeOpacity={0.8}
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-          
-          <CardFooter className="flex justify-between border-t">
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="gap-2">
-                <ZoomIn className="h-4 w-4" />
-                Reset View
-              </Button>
-              <Button variant="outline" size="sm" className="gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Refresh Data
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="destructive" 
-                size="sm" 
-                onClick={() => setLabeledPoints([])}
-                className="gap-2"
-                disabled={labeledPoints.length === 0}
-              >
-                <Trash className="h-4 w-4" />
-                Clear All
-              </Button>
-              <Button 
-                size="sm" 
-                className="gap-2 btn-glow"
-                disabled={labeledPoints.length === 0}
-                onClick={() => setIsTrainingModalOpen(true)}
-              >
-                <GitBranchPlus className="h-4 w-4" />
-                Train Model
-              </Button>
-            </div>
-          </CardFooter>
-        </Card>
+          {/* Recent Trades Section */}
+          <div>
+            <RecentTrades symbol={selectedSymbol} />
+          </div>
+        </div>
         
         {/* Labeled Points Section */}
         <Tabs defaultValue="labeled-points" className="w-full">
@@ -616,7 +563,7 @@ export default function AnalyticsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                   <div className="bg-muted/30 p-4 rounded-lg flex flex-col justify-between">
                     <div className="text-muted-foreground text-sm">Total Labels</div>
-                    <div className="text-3xl font-semibold mt-2">24</div>
+                    <div className="text-3xl font-semibold mt-2">{labeledPoints.length}</div>
                     <div className="text-xs text-muted-foreground mt-2">Last 7 days</div>
                   </div>
                   
@@ -625,15 +572,21 @@ export default function AnalyticsPage() {
                     <div className="flex items-center gap-4 mt-2">
                       <div className="flex items-center gap-1">
                         <div className="size-3 rounded-full bg-green-500"></div>
-                        <span className="text-sm">60% Bullish</span>
+                        <span className="text-sm">
+                          {Math.round(labeledPoints.filter(p => p.label === 'bullish').length / Math.max(1, labeledPoints.length) * 100)}% Bullish
+                        </span>
                       </div>
                       <div className="flex items-center gap-1">
                         <div className="size-3 rounded-full bg-red-500"></div>
-                        <span className="text-sm">40% Bearish</span>
+                        <span className="text-sm">
+                          {Math.round(labeledPoints.filter(p => p.label === 'bearish').length / Math.max(1, labeledPoints.length) * 100)}% Bearish
+                        </span>
                       </div>
                     </div>
                     <div className="h-1 w-full bg-muted mt-2 rounded-full overflow-hidden">
-                      <div className="h-full bg-green-500" style={{width: "60%"}}></div>
+                      <div className="h-full bg-green-500" style={{
+                        width: `${labeledPoints.filter(p => p.label === 'bullish').length / Math.max(1, labeledPoints.length) * 100}%`
+                      }}></div>
                     </div>
                   </div>
                   
@@ -641,10 +594,15 @@ export default function AnalyticsPage() {
                     <div className="text-muted-foreground text-sm">Training Quality</div>
                     <div className="flex items-center gap-1 mt-2">
                       <Sparkles className="h-4 w-4 text-amber-500" />
-                      <span className="font-medium">Good</span>
+                      <span className="font-medium">
+                        {labeledPoints.length < 10 ? 'Poor' : 
+                         labeledPoints.length < 30 ? 'Good' : 'Excellent'}
+                      </span>
                     </div>
                     <div className="text-xs text-muted-foreground mt-2">
-                      You need 20 more points for excellent quality
+                      {labeledPoints.length < 30 ? 
+                        `You need ${30 - labeledPoints.length} more points for excellent quality` : 
+                        'You have enough data for good model training'}
                     </div>
                   </div>
                 </div>
@@ -680,6 +638,21 @@ export default function AnalyticsPage() {
                 id="model-name"
                 placeholder="My BTC Trading Model"
                 className="col-span-3"
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+              />
+            </div>
+            
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="model-description" className="text-right">
+                Description
+              </Label>
+              <Input
+                id="model-description"
+                placeholder="Optional description"
+                className="col-span-3"
+                value={modelDescription}
+                onChange={(e) => setModelDescription(e.target.value)}
               />
             </div>
             
@@ -712,7 +685,11 @@ export default function AnalyticsPage() {
                 Advanced
               </Label>
               <div className="col-span-3 flex items-center space-x-2">
-                <Switch id="advanced-options" />
+                <Switch 
+                  id="advanced-options" 
+                  checked={advancedOptions}
+                  onCheckedChange={setAdvancedOptions}
+                />
                 <Label htmlFor="advanced-options" className="cursor-pointer">Enable hyperparameter tuning</Label>
               </div>
             </div>
@@ -724,7 +701,7 @@ export default function AnalyticsPage() {
             </Button>
             <Button 
               onClick={handleTrainModel} 
-              disabled={isLoading}
+              disabled={isLoading || !modelName || labeledPoints.length === 0}
               className="gap-2 btn-glow"
             >
               {isLoading ? (

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import random
 import logging
@@ -97,55 +97,71 @@ def generate_mock_order_book(symbol: str) -> dict:
         "bids": bids
     }
 
-@router.get("/historical", response_model=List[CryptoPrice])
-async def get_historical_prices(
+@router.get("/candles", response_model=List[CryptoPrice])
+async def get_candle_data(
     symbol: str = Query(..., description="Trading pair symbol (e.g., XBTZAR)"),
     interval: str = Query(..., description="Time interval (e.g., 1h, 4h, 1d)"),
-    from_time: Optional[str] = Query(None, alias="from", description="Start time (ISO format)"),
-    to_time: Optional[str] = Query(None, alias="to", description="End time (ISO format)")
+    from_time: Optional[str] = Query(None, alias="from", description="Start time (ISO format or Unix milliseconds)")
 ):
     """
-    Get historical price data for a cryptocurrency pair
+    Get historical candle (OHLC) data for a cryptocurrency pair
+    
+    Luno API supports these intervals:
+    - 60 (1m)
+    - 300 (5m)
+    - 900 (15m)
+    - 1800 (30m)
+    - 3600 (1h)
+    - 10800 (3h)
+    - 14400 (4h)
+    - 28800 (8h)
+    - 86400 (1d)
+    - 259200 (3d)
+    - 604800 (7d)
     """
     try:
         # Try to get data from Luno if API keys are configured
         api_keys = ApiKeyStorage.get_api_keys()
         if api_keys.get("luno_api_key") and api_keys.get("luno_api_secret"):
             try:
-                # Format to match Luno API requirements
-                # Convert interval string to seconds
+                # Convert interval string to seconds for Luno API
                 interval_seconds = convert_interval_to_seconds(interval)
                 
+                # Convert from_time to milliseconds since epoch if provided
+                since_ms = None
+                if from_time:
+                    try:
+                        # Check if already in milliseconds format (numeric string)
+                        if isinstance(from_time, str) and from_time.isdigit():
+                            since_ms = int(from_time)
+                        else:
+                            # Parse ISO format timestamp
+                            dt = datetime.fromisoformat(from_time.replace('Z', '+00:00'))
+                            since_ms = int(dt.timestamp() * 1000)
+                    except ValueError as e:
+                        logger.warning(f"Invalid timestamp format: {e}")
+                
+                # Create Luno API client
                 luno_client = create_luno_api(
                     api_key=api_keys["luno_api_key"],
                     api_secret=api_keys["luno_api_secret"]
                 )
                 
-                # Attempt to get data from Luno API
-                # Note: Depending on the actual API capabilities, this might need adjustment
-                print(f"Fetching data from Luno for {symbol} with interval {interval} and duration {interval_seconds} seconds")
-                # Get candle data from Luno
+                logger.info(f"Getting candles for {symbol} with duration {interval_seconds}s, since: {since_ms}")
+                
+                # Call Luno API with the exact parameters it expects
                 candle_data = luno_client.get_candles(
                     pair=symbol,
-                    since=from_time,
-                    duration=interval_seconds
+                    duration=interval_seconds,
+                    since=since_ms
                 )
-
-                print(f"Received candle data")
                 
                 if candle_data and len(candle_data.get('candles', [])) > 0:
                     # Process candle data to match our schema
                     return process_candle_data(candle_data.get('candles', []))
-                
-                # Fall back to trade data if candles aren't available
-                trades = luno_client.get_trades(pair=symbol, since=from_time)
-                if trades and 'trades' in trades and len(trades['trades']) > 0:
-                    # Process trade data into price points
-                    return process_trade_data(trades.get('trades', []), interval_seconds)
             
             except Exception as e:
-                logger.warning(f"Failed to get data from Luno API: {e}. Falling back to cached/mock data.")
-                # Continue to cached/mock data if Luno API fails
+                logger.warning(f"Failed to get candle data from Luno API: {e}. Falling back to cached/mock data.")
         
         # Check if we have cached data
         prices = PriceStorage.get_prices(symbol, interval)
@@ -155,21 +171,138 @@ async def get_historical_prices(
             prices = generate_mock_price_data(symbol, interval)
             PriceStorage.save_prices(symbol, interval, prices)
             
-        # Filter by time range if specified
-        if from_time or to_time:
-            filtered_prices = []
-            for price in prices:
-                time_str = price["time"]
-                if from_time and time_str < from_time:
-                    continue
-                if to_time and time_str > to_time:
-                    continue
-                filtered_prices.append(price)
-            return filtered_prices
-            
         return prices
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching historical prices: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching candle data: {str(e)}")
+
+# For compatibility with old frontend requests
+@router.get("/historical", response_model=List[CryptoPrice])
+async def get_historical_price_data(
+    symbol: str = Query(..., description="Trading pair symbol (e.g., XBTZAR)"),
+    interval: str = Query(..., description="Time interval (e.g., 1h, 4h, 1d)"),
+    from_time: Optional[str] = Query(None, alias="from", description="Start time (ISO format or Unix milliseconds)"),
+    to_time: Optional[str] = Query(None, alias="to", description="End time (ISO format)")
+):
+    """
+    Get historical price data for a cryptocurrency pair
+    This endpoint is an alias for /candles to maintain compatibility with frontend
+    """
+    # Get candle data from the new endpoint
+    candles = await get_candle_data(symbol, interval, from_time)
+    
+    # Filter by end time if specified
+    if to_time:
+        try:
+            # Parse ISO format end timestamp
+            end_dt = datetime.fromisoformat(to_time.replace('Z', '+00:00'))
+            end_timestamp = end_dt.timestamp()
+            
+            filtered_candles = []
+            for candle in candles:
+                try:
+                    # Parse candle timestamp and compare
+                    candle_dt = datetime.fromisoformat(candle["time"].replace('Z', '+00:00'))
+                    if candle_dt.timestamp() <= end_timestamp:
+                        filtered_candles.append(candle)
+                except (ValueError, TypeError):
+                    # Skip items with invalid timestamps
+                    pass
+            return filtered_candles
+        except ValueError:
+            # If to_time is invalid, return all candles
+            logger.warning(f"Invalid to_time format: {to_time}")
+    
+    return candles
+
+@router.get("/trades")
+async def get_trade_data(
+    symbol: str = Query(..., description="Trading pair symbol (e.g., XBTZAR)"),
+    since: Optional[str] = Query(None, description="Fetch trades after this timestamp (ISO format)"),
+    limit: Optional[int] = Query(100, description="Maximum number of trades to return")
+):
+    """
+    Get recent trades for a cryptocurrency pair
+    """
+    try:
+        # Try to get trades from Luno API
+        api_keys = ApiKeyStorage.get_api_keys()
+        if api_keys.get("luno_api_key") and api_keys.get("luno_api_secret"):
+            try:
+                luno_client = create_luno_api(
+                    api_key=api_keys["luno_api_key"],
+                    api_secret=api_keys["luno_api_secret"]
+                )
+                
+                # Convert ISO timestamp to milliseconds since epoch if provided
+                since_ms = None
+                if since:
+                    try:
+                        # Check if since is already in milliseconds format (numeric string)
+                        if isinstance(since, str) and since.isdigit():
+                            since_ms = since
+                        else:
+                            # Parse ISO format timestamp
+                            dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+                            since_ms = str(int(dt.timestamp() * 1000))
+                    except ValueError as e:
+                        logger.warning(f"Invalid timestamp format: {e}")
+                
+                logger.info(f"Getting trades for {symbol} since {since_ms}")
+                
+                # Get recent trades from Luno
+                trades_response = luno_client.get_trades(pair=symbol, since=since_ms)
+                if trades_response and "trades" in trades_response:
+                    trades = trades_response["trades"]
+                    # Limit the number of trades returned
+                    return {
+                        "timestamp": datetime.now().isoformat(),
+                        "pair": symbol,
+                        "trades": trades[:limit] if limit and len(trades) > limit else trades
+                    }
+            except Exception as e:
+                logger.warning(f"Failed to get trades from Luno API: {e}. Falling back to mock data.")
+        
+        # If we couldn't get data from Luno, generate mock data
+        mock_trades = generate_mock_trades(symbol, limit)
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "pair": symbol,
+            "trades": mock_trades
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching trade data: {str(e)}")
+
+def generate_mock_trades(symbol: str, limit: int = 100) -> List[dict]:
+    """Generate mock trade data for demo purposes"""
+    now = datetime.now()
+    trades = []
+    
+    for i in range(limit):
+        # Random price around a base value
+        if "XBT" in symbol:
+            base_price = 45000
+            volume_range = (0.001, 0.1)
+        elif "ETH" in symbol:
+            base_price = 3300
+            volume_range = (0.01, 1.0)
+        elif "SOL" in symbol:
+            base_price = 100
+            volume_range = (0.1, 10.0)
+        else:
+            base_price = 1.0
+            volume_range = (10, 1000)
+            
+        price = base_price * (1 + random.uniform(-0.02, 0.02))
+        timestamp = int((now - timedelta(minutes=i*5)).timestamp() * 1000)
+        
+        trades.append({
+            "timestamp": timestamp,
+            "price": str(round(price, 2)),
+            "volume": str(round(random.uniform(*volume_range), 6)),
+            "is_buy": random.choice([True, False])
+        })
+    
+    return trades
 
 @router.get("/live", response_model=CryptoPrice)
 async def get_live_price(
@@ -382,9 +515,22 @@ def process_candle_data(candles: List[dict]) -> List[dict]:
     """
     result = []
     for candle in candles:
+        # Convert timestamp to ISO format if it's in milliseconds
+        timestamp = candle.get("timestamp", "")
+        if timestamp and timestamp.isdigit():
+            # Convert milliseconds to ISO format
+            try:
+                dt = datetime.fromtimestamp(int(timestamp) / 1000)
+                timestamp = dt.isoformat()
+            except (ValueError, TypeError):
+                pass
+        
         result.append({
-            "time": candle.get("timestamp", ""),
+            "time": timestamp,
             "price": float(candle.get("close", 0)),
+            "open": float(candle.get("open", 0)),
+            "high": float(candle.get("high", 0)),
+            "low": float(candle.get("low", 0)),
             "volume": float(candle.get("volume", 0))
         })
     return result

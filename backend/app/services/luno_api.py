@@ -115,25 +115,35 @@ class LunoAPI:
         
         Args:
             pair: Trading pair
-            since: Timestamp since when to get candles (milliseconds since epoch)
+            since: Timestamp since when to get candles (ISO format or milliseconds since epoch)
             duration: Candle duration in seconds (e.g., 60, 300, 900, 1800, 3600, 86400)
         """
         try:
-            # Note: This is a workaround as luno-python doesn't have a direct method for candles
-            # In a real implementation, you'd add proper handling for different durations
-            # and convert it to the format the frontend expects
-            # Convert timestamp to milliseconds if it's a string
-            timestamp_str = "2025-03-12T00:00:00Z"  # Example timestamp
-            # Convert timestamp to milliseconds since epoch
-            dt = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%SZ")
-            milliseconds_since_epoch = int(dt.timestamp() * 1000)
+            # Convert ISO timestamp to milliseconds since epoch if provided
+            since_ms = None
+            if since:
+                try:
+                    # Check if since is already in milliseconds format (numeric string)
+                    if since.isdigit():
+                        since_ms = since
+                    else:
+                        # Parse ISO format timestamp
+                        dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+                        since_ms = str(int(dt.timestamp() * 1000))
+                except ValueError as e:
+                    logger.warning(f"Invalid timestamp format: {e}")
             
-            print(f"Milliseconds since epoch: {milliseconds_since_epoch}")
-
-            candles = self.client.get_candles(duration=duration, pair=pair, since=milliseconds_since_epoch)
-
-            # Candle data example {'pair': 'XBTZAR', 'duration': 3600, 'candles': [{'timestamp': 1741730400000, 'open': '1546045.00', 'close': '1546254.00', 'high': '1547946.00', 'low': '1542462.00', 'volume': '1.008246'}]}
-
+            logger.info(f"Getting candles for {pair} with duration {duration}s, since: {since_ms}")
+            
+            # Call Luno API to get candle data
+            # Note: This assumes the Luno API has a get_candles method
+            # In production, verify this method exists or implement a custom solution
+            candles = self.client.get_candles(
+                pair=pair,
+                duration=duration,
+                since=since_ms
+            )
+            
             return candles
         except Exception as e:
             logger.error(f"Error getting candles for {pair}: {str(e)}")

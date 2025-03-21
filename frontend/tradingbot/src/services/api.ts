@@ -38,6 +38,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 /**
  * Fetch historical crypto price data
+ * @deprecated Use fetchCandleData and fetchTradeData instead
  */
 export async function fetchHistoricalPrices(
   symbol: string,
@@ -45,25 +46,8 @@ export async function fetchHistoricalPrices(
   from?: string,
   to?: string
 ): Promise<CryptoPrice[]> {
-  try {
-    const params = new URLSearchParams({
-      symbol,
-      interval,
-      ...(from && { from }),
-      ...(to && { to }),
-    });
-
-    const response = await fetch(`${API_BASE_URL}/api/prices/historical?${params}`);
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching historical prices:', error);
-    throw error;
-  }
+  console.warn('fetchHistoricalPrices is deprecated. Use fetchCandleData instead.');
+  return fetchCandleData(symbol, interval, from, to);
 }
 
 /**
@@ -243,6 +227,65 @@ export async function getAccountBalance(): Promise<{ fiat: number; crypto: numbe
     return await response.json();
   } catch (error) {
     console.error('Error fetching account balance:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch candle (OHLC) data for a cryptocurrency pair
+ */
+export async function fetchCandleData(
+  symbol: string,
+  interval: string,
+  from?: string,
+  to?: string
+): Promise<CryptoPrice[]> {
+  try {
+    const params = new URLSearchParams({
+      symbol,
+      interval,
+      ...(from && { from }),
+      ...(to && { to }),
+    });
+    const response = await fetch(`${API_BASE_URL}/api/prices/candles?${params}`);
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching candle data:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch recent trades for a cryptocurrency pair
+ */
+export interface Trade {
+  timestamp: number;
+  price: string;
+  volume: string;
+  is_buy: boolean;
+}
+
+export async function fetchTradeData(
+  symbol: string,
+  since?: string,
+  limit: number = 100
+): Promise<Trade[]> {
+  try {
+    const params = new URLSearchParams({
+      symbol,
+      ...(since && { since }),
+      ...(limit && { limit: limit.toString() }),
+    });
+    const response = await fetch(`${API_BASE_URL}/api/prices/trades?${params}`);
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching trade data:', error);
     throw error;
   }
 }
