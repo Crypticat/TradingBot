@@ -11,11 +11,25 @@ import { cn } from "@/lib/utils";
 export function RecentTrades({ symbol }: { symbol: string }) {
   const [trades, setTrades] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [timeWindow, setTimeWindow] = useState("24h");
 
   const loadRecentTrades = async () => {
     try {
       setIsLoading(true);
-      const response = await fetchTradeData(symbol);
+
+      // Calculate timestamp based on the selected time window
+      const params: any = {};
+      if (timeWindow) {
+        const now = new Date();
+        const hours = parseInt(timeWindow.replace('h', ''));
+        // Calculate time in the past (subtract hours from current time)
+        // Use 23h59m for 24h to ensure we stay within the API's limit
+        const hoursToSubtract = hours === 24 ? 23.98 : hours;
+        const pastTime = new Date(now.getTime() - (hoursToSubtract * 60 * 60 * 1000));
+        params.since = pastTime.getTime().toString();
+      }
+
+      const response = await fetchTradeData(symbol, params);
       if (response && response.trades) {
         setTrades(response.trades);
       } else {
@@ -30,23 +44,36 @@ export function RecentTrades({ symbol }: { symbol: string }) {
 
   useEffect(() => {
     loadRecentTrades();
-  }, [symbol]);
+  }, [symbol, timeWindow]);
 
   return (
     <Card className="bg-card dark:bg-slate-900">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <div>
           <CardTitle className="text-lg">Recent Trades</CardTitle>
-          <CardDescription>Latest market transactions for {symbol}</CardDescription>
+          <CardDescription>Latest market transactions for {symbol} (last {timeWindow})</CardDescription>
         </div>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={loadRecentTrades}
-          disabled={isLoading}
-        >
-          <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
-        </Button>
+        <div className="flex items-center gap-2">
+          <select
+            className="text-sm bg-background border border-border rounded p-1"
+            value={timeWindow}
+            onChange={(e) => setTimeWindow(e.target.value)}
+          >
+            <option value="1h">1h</option>
+            <option value="4h">4h</option>
+            <option value="8h">8h</option>
+            <option value="12h">12h</option>
+            <option value="24h">24h</option>
+          </select>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={loadRecentTrades}
+            disabled={isLoading}
+          >
+            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="rounded-md border border-border">

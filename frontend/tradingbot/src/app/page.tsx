@@ -65,7 +65,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState("XBTZAR");
-  const [startTime, setStartTime] = useState<Date | null>(null);
+  const [timeWindow, setTimeWindow] = useState("24h");
   const [marketStats, setMarketStats] = useState({
     volume24h: 0,
     priceChange24h: 0,
@@ -117,11 +117,15 @@ export default function Home() {
       // Build parameters for the API call
       const params: any = {};
 
-      // Add start time parameter if selected
-      if (startTime) {
-        // Convert Date object to timestamp string in milliseconds
-        const startTimeMs = startTime.getTime();
-        params.since = startTimeMs.toString();
+      // Calculate timestamp based on the selected time window
+      if (timeWindow) {
+        const now = new Date();
+        const hours = parseInt(timeWindow.replace('h', ''));
+        // Calculate time in the past (subtract hours from current time)
+        // Use 23h59m for 24h to ensure we stay within the API's limit
+        const hoursToSubtract = hours === 24 ? 23.98 : hours;
+        const pastTime = new Date(now.getTime() - (hoursToSubtract * 60 * 60 * 1000));
+        params.since = pastTime.getTime().toString();
       }
 
       // Fetch recent trades using the trade endpoint with parameters
@@ -178,7 +182,7 @@ export default function Home() {
 
     // Clean up interval on component unmount
     return () => clearInterval(refreshInterval);
-  }, [selectedSymbol, startTime]);
+  }, [selectedSymbol, timeWindow]);
 
   // Format price with proper currency symbol
   const formatPrice = (price: number) => {
@@ -195,9 +199,10 @@ export default function Home() {
     setIsLoading(true);
   };
 
-  // Handle date change for start time
-  const handleDateChange = (date: Date | null) => {
-    setStartTime(date);
+  // Handle time window change
+  const handleTimeWindowChange = (value: string) => {
+    setTimeWindow(value);
+    setIsLoading(true);
   };
 
   // Handle manual refresh
@@ -237,37 +242,23 @@ export default function Home() {
                 </Select>
               </div>
 
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[240px] justify-start text-left font-normal">
-                    <Calendar className="mr-2 h-4 w-4" />
-                    {startTime ? (
-                      startTime.toLocaleDateString()
-                    ) : (
-                      <span>Pick a start date</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <DatePicker
-                    mode="single"
-                    selected={startTime}
-                    onSelect={handleDateChange}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-
-              {startTime && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setStartTime(null)}
-                  title="Clear date filter"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                </Button>
-              )}
+              <div className="w-40">
+                <Select value={timeWindow} onValueChange={handleTimeWindowChange}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select time window" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Time Window</SelectLabel>
+                      <SelectItem value="1h">Last 1 hour</SelectItem>
+                      <SelectItem value="4h">Last 4 hours</SelectItem>
+                      <SelectItem value="8h">Last 8 hours</SelectItem>
+                      <SelectItem value="12h">Last 12 hours</SelectItem>
+                      <SelectItem value="24h">Last 24 hours</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <Button
@@ -425,10 +416,7 @@ export default function Home() {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Recent price movements based on latest trades
-                  {startTime && (
-                    <> starting from {startTime.toLocaleDateString()}</>
-                  )}
+                  Recent price movements for the last {timeWindow} of trades
                 </CardDescription>
               </CardHeader>
 
