@@ -83,13 +83,17 @@ export function PriceChart({
   };
 
   const getAreaCoordinates = () => {
-    if (leftZoomIndex !== null && rightZoomIndex !== null) {
+    if (leftZoomIndex !== null && rightZoomIndex !== null && data.length > 0) {
       const startIndex = Math.min(leftZoomIndex, rightZoomIndex);
       const endIndex = Math.max(leftZoomIndex, rightZoomIndex);
-      return {
-        x1: data[startIndex].time,
-        x2: data[endIndex].time,
-      };
+      
+      // Check if indices are within valid range
+      if (startIndex < data.length && endIndex < data.length) {
+        return {
+          x1: data[startIndex].time,
+          x2: data[endIndex].time,
+        };
+      }
     }
     return {};
   };
@@ -196,7 +200,7 @@ export function PriceChart({
               />
             ))}
 
-            {leftZoomIndex !== null && rightZoomIndex !== null && (
+            {leftZoomIndex !== null && rightZoomIndex !== null && data.length > 0 && (
               <ReferenceArea
                 {...getAreaCoordinates()}
                 strokeOpacity={0.3}

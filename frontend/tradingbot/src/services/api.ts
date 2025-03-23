@@ -261,25 +261,47 @@ export async function fetchCandleData(
 /**
  * Fetch recent trades for a cryptocurrency pair
  */
-export interface Trade {
-  timestamp: number;
-  price: string;
-  volume: string;
-  is_buy: boolean;
+export interface TradeResponse {
+  trades: {
+    timestamp: string;
+    price: string;
+    volume: string;
+    is_buy: boolean;
+  }[];
 }
 
+/**
+ * Fetch recent trades for a cryptocurrency pair
+ * @param symbol The trading pair symbol (e.g., XBTZAR)
+ * @param params Optional parameters (since timestamp as ISO string or Date object, limit)
+ * @returns Trade data response
+ */
 export async function fetchTradeData(
   symbol: string,
-  since?: string,
-  limit: number = 100
-): Promise<Trade[]> {
+  params: { since?: string | Date, limit?: number } = {}
+): Promise<TradeResponse> {
   try {
-    const params = new URLSearchParams({
+    const queryParams = new URLSearchParams({
       symbol,
-      ...(since && { since }),
-      ...(limit && { limit: limit.toString() }),
     });
-    const response = await fetch(`${API_BASE_URL}/api/prices/trades?${params}`);
+    
+    // Add since parameter if provided (ensure it's a string)
+    if (params.since) {
+      // If it's a Date object, convert to ISO string
+      if (params.since instanceof Date) {
+        queryParams.append('since', params.since.toISOString());
+      } else {
+        // Assume it's already an ISO string
+        queryParams.append('since', params.since);
+      }
+    }
+    
+    // Add limit parameter if provided
+    if (params.limit) {
+      queryParams.append('limit', params.limit.toString());
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/prices/trades?${queryParams}`);
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);
     }

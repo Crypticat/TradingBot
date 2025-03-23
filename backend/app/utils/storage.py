@@ -1,5 +1,6 @@
+""" Storage utilities for the trading bot"""
 import json
-import os
+
 from typing import List, Dict, Any, Optional
 import uuid
 from datetime import datetime
@@ -12,7 +13,7 @@ DATA_DIR.mkdir(exist_ok=True)
 def save_to_file(data: Any, filename: str) -> None:
     """Save data to a JSON file"""
     file_path = DATA_DIR / filename
-    with open(file_path, "w") as f:
+    with open(file_path, "w", encoding='utf-8') as f:
         json.dump(data, f, default=str)
 
 def load_from_file(filename: str, default: Any = None) -> Any:
@@ -21,7 +22,7 @@ def load_from_file(filename: str, default: Any = None) -> Any:
     print(f"Loading data from {file_path}")
     if not file_path.exists():
         return default
-    with open(file_path, "r") as f:
+    with open(file_path, "r", encoding='utf-8') as f:
         return json.load(f)
 
 def generate_id() -> str:
@@ -115,7 +116,7 @@ class ApiKeyStorage:
 
 class PriceStorage:
     """Storage for price data"""
-    
+
     @classmethod
     def save_prices(cls, symbol: str, interval: str, prices: List[Dict]) -> None:
         """Save prices to file"""

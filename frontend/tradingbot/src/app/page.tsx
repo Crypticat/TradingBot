@@ -1,617 +1,587 @@
 "use client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { 
-  LineChart, 
-  Line, 
-  CartesianGrid, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  ReferenceLine,
-} from 'recharts';
-import { 
+  ArrowDown, 
+  ArrowRight, 
+  ArrowUp, 
   ArrowUpRight, 
-  BarChart2, 
+  BarChart4, 
+  Clock, 
   Play, 
-  Settings, 
-  TrendingUp, 
   TrendingDown, 
-  Zap, 
+  TrendingUp, 
+  DollarSign,
   Activity,
-  RefreshCw,
-  BarChart3,
-  Bot,
-  ExternalLink,
-  CalendarIcon,
+  Percent,
+  RotateCcw,
+  Calendar
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
-import { cn } from "@/lib/utils";
-import { format } from "date-fns";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { DateRange } from "react-day-picker";
+import { fetchLivePrice, fetchTradeData } from "@/services/api";
+import { PriceChart } from "@/components/price-chart";
+import { LoadingSpinner } from "@/components/loading-spinner";
 import { 
-  Select,
-  SelectContent,
-  SelectItem,
+  Select, 
+  SelectContent, 
+  SelectGroup, 
+  SelectItem, 
+  SelectLabel, 
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { 
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage
+} from "@/components/ui/form";
+import { DatePicker } from "@/components/ui/date-picker";
+import { cn } from "@/lib/utils";
 
-// Sample data for the chart
-const data = [
-  { time: '00:00', price: 42000, volume: 120 },
-  { time: '04:00', price: 43200, volume: 200 },
-  { time: '08:00', price: 42800, volume: 180 },
-  { time: '12:00', price: 44500, volume: 300 },
-  { time: '16:00', price: 45200, volume: 250 },
-  { time: '20:00', price: 44800, volume: 220 },
-  { time: '24:00', price: 46000, volume: 280 },
-];
-
-// Sample market data
-const marketData = [
-  { pair: 'BTC/USD', price: 45892.32, change: 2.4 },
-  { pair: 'ETH/USD', price: 3240.18, change: -1.2 },
-  { pair: 'XRP/USD', price: 0.58, change: 5.6 },
-  { pair: 'SOL/USD', price: 98.75, change: 3.2 },
-];
-
-// Sample model performance data
-const modelData = [
-  { name: 'SMA Crossover', winRate: 68, profit: 12.4, trades: 45 },
-  { name: 'LSTM Predictor', winRate: 72, profit: 18.7, trades: 32 },
-  { name: 'RSI Strategy', winRate: 64, profit: 8.2, trades: 56 },
+// Currency pairs available on Luno
+const CURRENCY_PAIRS = [
+  { value: "XBTZAR", label: "BTC/ZAR" },
+  { value: "ETHZAR", label: "ETH/ZAR" },
+  { value: "XRPZAR", label: "XRP/ZAR" },
+  { value: "LTCZAR", label: "LTC/ZAR" },
+  { value: "BCHZAR", label: "BCH/ZAR" },
+  { value: "XBTUSDC", label: "BTC/USDC" },
+  { value: "ETHUSDC", label: "ETH/USDC" },
+  { value: "XRPUSDC", label: "XRP/USDC" },
 ];
 
 export default function Home() {
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isClient, setIsClient] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [selectedInterval, setSelectedInterval] = useState("1h");
-  const [date, setDate] = useState<DateRange | undefined>({
-    from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
-    to: new Date(),
+  const [priceData, setPriceData] = useState<any[]>([]);
+  const [livePrice, setLivePrice] = useState<any>(null);
+  const [recentTrades, setRecentTrades] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedSymbol, setSelectedSymbol] = useState("XBTZAR");
+  const [tradeLimit, setTradeLimit] = useState("20");
+  const [startTime, setStartTime] = useState<Date | null>(null);
+  const [marketStats, setMarketStats] = useState({
+    volume24h: 0,
+    priceChange24h: 0,
+    priceChangePercent24h: 0,
+    high24h: 0,
+    low24h: 0
   });
-  const [chartData, setChartData] = useState(data);
-  const [isChartLoading, setIsChartLoading] = useState(false);
-  const [selectedSymbol, setSelectedSymbol] = useState("BTC/USD");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Fix for hydration errors - only render client-specific components after hydration
-  useEffect(() => {
-    setIsClient(true);
-    setMounted(true);
-  }, []);
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    // Simulate data fetching
-    setTimeout(() => {
-      setIsRefreshing(false);
-    }, 1500);
+  // Calculate market stats from trade data
+  const calculateMarketStats = (trades: any[]) => {
+    if (!trades || trades.length === 0) return;
+    
+    // Sort trades by timestamp (newest first)
+    const sortedTrades = [...trades].sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp));
+    
+    // Calculate 24h volume
+    const volume24h = sortedTrades.reduce((sum, trade) => sum + parseFloat(trade.volume), 0);
+    
+    // Find high and low price in the last 24h
+    const prices = sortedTrades.map(trade => parseFloat(trade.price));
+    const high24h = Math.max(...prices);
+    const low24h = Math.min(...prices);
+    
+    // Calculate price change (current price - earliest price)
+    const latestPrice = parseFloat(sortedTrades[0].price);
+    const earliestPrice = parseFloat(sortedTrades[sortedTrades.length - 1].price);
+    const priceChange24h = latestPrice - earliestPrice;
+    const priceChangePercent24h = (priceChange24h / earliestPrice) * 100;
+    
+    setMarketStats({
+      volume24h,
+      priceChange24h,
+      priceChangePercent24h,
+      high24h,
+      low24h
+    });
   };
 
-  // Function to fetch historical price data
-  const fetchHistoricalData = useCallback(async () => {
-    if (!selectedSymbol || !selectedInterval || !date?.from) return;
-    
-    setIsChartLoading(true);
-    
+  // Load data based on current parameters
+  const loadData = async () => {
     try {
-      const fromISO = date.from.toISOString();
-      const toISO = date.to ? date.to.toISOString() : new Date().toISOString();
+      setIsRefreshing(true);
       
-      const response = await fetch(`/api/prices/historical?symbol=${selectedSymbol}&interval=${selectedInterval}&from=${fromISO}&to=${toISO}`);
+      // Build parameters for the API call
+      const params: any = {
+        limit: Math.max(1, parseInt(tradeLimit)) // Ensure limit is at least 1
+      };
       
-      if (!response.ok) {
-        throw new Error(`Error fetching data: ${response.status}`);
+      // Add start time parameter if selected
+      if (startTime) {
+        // Convert Date object to timestamp string in milliseconds
+        const startTimeMs = startTime.getTime();
+        params.since = startTimeMs.toString();
       }
       
-      const historicalData = await response.json();
+      // Fetch recent trades using the trade endpoint with parameters
+      const tradeResponse = await fetchTradeData(selectedSymbol, params);
       
-      // Transform data to match chart format
-      const formattedData = historicalData.map(item => ({
-        time: item.time.substring(11, 16), // Extract HH:MM from ISO
-        price: item.price,
-        volume: item.volume || 0
-      }));
+      if (tradeResponse && tradeResponse.trades) {
+        // Get the most recent trades
+        const trades = tradeResponse.trades;
+        setRecentTrades(trades.slice(0, parseInt(tradeLimit)));
+        
+        // Calculate market statistics
+        calculateMarketStats(trades);
+        
+        // Convert trades to price chart format
+        // Sort trades by timestamp (oldest first)
+        const sortedTrades = [...trades].sort((a, b) => parseInt(a.timestamp) - parseInt(b.timestamp));
+        
+        // Transform trades data to price chart format
+        const chartData = sortedTrades.map(trade => ({
+          time: new Date(parseInt(trade.timestamp)).toLocaleString(),
+          price: parseFloat(trade.price),
+          volume: parseFloat(trade.volume),
+        }));
+        
+        setPriceData(chartData);
+      }
       
-      setChartData(formattedData.length > 0 ? formattedData : data);
-    } catch (error) {
-      console.error("Failed to fetch historical data:", error);
-      // Fall back to sample data
-      setChartData(data);
+      // Fetch current live price
+      const livePriceData = await fetchLivePrice(selectedSymbol);
+      setLivePrice(livePriceData);
+      
+    } catch (err) {
+      console.error("Error loading data:", err);
+      setError("Failed to load market data. Please try again later.");
     } finally {
-      setIsChartLoading(false);
+      setIsRefreshing(false);
+      setIsLoading(false);
     }
-  }, [selectedSymbol, selectedInterval, date]);
+  };
 
-  // Fetch data when parameters change
+  // Load data on component mount and when configuration changes
   useEffect(() => {
-    if (mounted) {
-      fetchHistoricalData();
-    }
-  }, [fetchHistoricalData, mounted]);
+    loadData();
+    
+    // Set up a timer to refresh data every 30 seconds
+    const refreshInterval = setInterval(() => {
+      loadData();
+    }, 30000);
+    
+    // Clean up interval on component unmount
+    return () => clearInterval(refreshInterval);
+  }, [selectedSymbol, tradeLimit, startTime]);
 
-  // Don't render anything until after hydration to prevent mismatch
-  if (!mounted) {
-    return null;
-  }
+  // Format price with proper currency symbol
+  const formatPrice = (price: number) => {
+    if (selectedSymbol.includes("ZAR")) {
+      return `R ${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    } else {
+      return `$ ${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+  };
+
+  // Handle currency pair change
+  const handleSymbolChange = (value: string) => {
+    setSelectedSymbol(value);
+    setIsLoading(true);
+  };
+
+  // Handle trade limit change
+  const handleLimitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Only allow positive integers greater than 0
+    if (/^\d*$/.test(value)) {
+      const numValue = parseInt(value) || 1; // Default to 1 if parsed value is 0 or NaN
+      setTradeLimit(numValue.toString());
+    }
+  };
+
+  // Handle date change for start time
+  const handleDateChange = (date: Date | null) => {
+    setStartTime(date);
+  };
+
+  // Handle manual refresh
+  const handleRefresh = () => {
+    loadData();
+  };
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="flex flex-col gap-8">
-        {/* Header section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
-          <div className="mb-6 md:mb-0">
-            <div className="flex items-center mb-2">
-              <h1 className="text-3xl font-bold mr-3">Trading Dashboard</h1>
-              <Badge variant="outline" className="bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
-                <span className="animate-pulse size-2 rounded-full bg-primary mr-1"></span>
-                Live
-              </Badge>
+    <main className="flex flex-col p-6 gap-6">
+      <section className="flex flex-col gap-2">
+        <h1 className="text-4xl font-bold">Luno Trading Bot</h1>
+        <p className="text-lg text-muted-foreground">
+          Automated cryptocurrency trading using machine learning models
+        </p>
+      </section>
+
+      {/* Configuration Panel */}
+      <Card className="bg-card">
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            <div className="flex flex-wrap gap-4 items-center">
+              <div className="w-40">
+                <Select value={selectedSymbol} onValueChange={handleSymbolChange}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select currency pair" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Currency Pairs</SelectLabel>
+                      {CURRENCY_PAIRS.map((pair) => (
+                        <SelectItem key={pair.value} value={pair.value}>
+                          {pair.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="w-32">
+                <div className="flex flex-col space-y-1.5">
+                  <label htmlFor="tradeLimit" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Trade Limit
+                  </label>
+                  <Input
+                    id="tradeLimit"
+                    value={tradeLimit}
+                    onChange={handleLimitChange}
+                    className="w-full"
+                    placeholder="Number of trades"
+                    min="1"
+                    type="number"
+                  />
+                </div>
+              </div>
+              
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[240px] justify-start text-left font-normal">
+                    <Calendar className="mr-2 h-4 w-4" />
+                    {startTime ? (
+                      startTime.toLocaleDateString()
+                    ) : (
+                      <span>Pick a start date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <DatePicker
+                    mode="single"
+                    selected={startTime}
+                    onSelect={handleDateChange}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              
+              {startTime && (
+                <Button 
+                  variant="outline" 
+                  size="icon"
+                  onClick={() => setStartTime(null)}
+                  title="Clear date filter"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              )}
             </div>
-            <p className="text-muted-foreground max-w-xl">
-              Monitor, analyze, and control your crypto trading strategies in real-time
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
+            
             <Button 
-              variant="outline"
-              className="gap-2 group"
-              onClick={handleRefresh}
+              onClick={handleRefresh} 
+              variant="outline" 
+              className="gap-2"
               disabled={isRefreshing}
             >
-              <RefreshCw className={cn(
-                "h-4 w-4 transition-all",
-                isRefreshing && "animate-spin"
-              )} />
-              {isRefreshing ? "Updating..." : "Refresh Data"}
-            </Button>
-            <Button variant="outline" className="gap-2">
-              <Settings className="h-4 w-4" />
-              Settings
-            </Button>
-            <Button className="gap-2">
-              <Play className="h-4 w-4" />
-              Start Trading
+              <RotateCcw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+              Refresh
             </Button>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="bg-card dark:bg-slate-900 overflow-hidden">
-            <CardHeader className="pb-2">
-              <CardDescription>Total Balance</CardDescription>
-              <CardTitle className="text-2xl flex items-center">
-                $18,245.32
-                <Badge className="ml-2 bg-green-500/20 text-green-500 hover:bg-green-500/30 h-5">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  +3.2%
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="h-[60px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <Area 
-                      type="monotone" 
-                      dataKey="price" 
-                      stroke="#22c55e" 
-                      strokeWidth={2}
-                      fillOpacity={1}
-                      fill="url(#colorBalance)" 
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-card dark:bg-slate-900 overflow-hidden">
-            <CardHeader className="pb-2">
-              <CardDescription>24h Volume</CardDescription>
-              <CardTitle className="text-2xl">$5,428.89</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="h-[60px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <Area 
-                      type="monotone" 
-                      dataKey="volume" 
-                      stroke="#3b82f6" 
-                      strokeWidth={2}
-                      fillOpacity={1}
-                      fill="url(#colorVolume)" 
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-card dark:bg-slate-900">
-            <CardHeader className="pb-2">
-              <CardDescription>Active Models</CardDescription>
-              <CardTitle className="text-2xl">3</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <div className="flex items-center">
-                  <Zap className="h-3 w-3 mr-1 text-yellow-500" />
-                  <span>2 profitable</span>
-                </div>
-                <div className="flex items-center">
-                  <Activity className="h-3 w-3 mr-1 text-blue-500" />
-                  <span>45 trades today</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-card dark:bg-slate-900">
-            <CardHeader className="pb-2">
-              <CardDescription>Overall Profit</CardDescription>
-              <CardTitle className="text-2xl flex items-center">
-                +$842.25
-                <Badge className="ml-2 bg-green-500/20 text-green-500 hover:bg-green-500/30 h-5">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  +12.5%
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Since 28 days ago</span>
-                <Link href="/analytics" className="text-primary hover:underline flex items-center">
-                  View details
-                  <ArrowUpRight className="h-3 w-3 ml-1" />
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <LoadingSpinner size="lg" />
         </div>
-
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left column - Market Overview */}
-          <div className="lg:col-span-2">
-            <Card className="bg-card dark:bg-slate-900 border-border">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <div>
-                  <CardTitle>Market Overview</CardTitle>
-                  <CardDescription>{selectedSymbol} recent performance</CardDescription>
-                </div>
-                {isClient && (
-                  <div className="flex flex-wrap gap-2">
-                    <Select 
-                      value={selectedSymbol} 
-                      onValueChange={setSelectedSymbol}
-                    >
-                      <SelectTrigger className="w-[130px]">
-                        <SelectValue placeholder="Select pair" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="BTC/USD">BTC/USD</SelectItem>
-                        <SelectItem value="ETH/USD">ETH/USD</SelectItem>
-                        <SelectItem value="XRP/USD">XRP/USD</SelectItem>
-                        <SelectItem value="SOL/USD">SOL/USD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    
-                    <Select 
-                      value={selectedInterval} 
-                      onValueChange={setSelectedInterval}
-                    >
-                      <SelectTrigger className="w-[100px]">
-                        <SelectValue placeholder="Interval" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="5m">5 min</SelectItem>
-                        <SelectItem value="15m">15 min</SelectItem>
-                        <SelectItem value="1h">1 hour</SelectItem>
-                        <SelectItem value="4h">4 hours</SelectItem>
-                        <SelectItem value="1d">1 day</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "justify-start text-left font-normal w-[150px]",
-                            !date && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {date?.from ? (
-                            date.to ? (
-                              <>
-                                {format(date.from, "MMM dd")} -{" "}
-                                {format(date.to, "MMM dd")}
-                              </>
-                            ) : (
-                              format(date.from, "MMM dd, yyyy")
-                            )
-                          ) : (
-                            <span>Pick a date</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <CalendarComponent
-                          initialFocus
-                          mode="range"
-                          defaultMonth={date?.from}
-                          selected={date}
-                          onSelect={setDate}
-                          numberOfMonths={2}
-                        />
-                      </PopoverContent>
-                    </Popover>
+      ) : error ? (
+        <Card className="border-destructive bg-destructive/10">
+          <CardContent className="pt-6">
+            <p className="text-center text-destructive">{error}</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Market Indicators */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Current Price */}
+            <Card className="bg-card hover:shadow-md transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <DollarSign className="h-4 w-4 mr-1" />
+                    <span>Current Price</span>
                   </div>
-                )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl font-bold">
+                      {livePrice ? formatPrice(livePrice.price) : "-"}
+                    </span>
+                    <Badge variant="outline" className="font-mono flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Live
+                    </Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 24h Change */}
+            <Card className={`bg-card hover:shadow-md transition-shadow ${
+              marketStats.priceChangePercent24h > 0 ? 'border-green-500/50' : 
+              marketStats.priceChangePercent24h < 0 ? 'border-red-500/50' : ''
+            }`}>
+              <CardContent className="p-6">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <Percent className="h-4 w-4 mr-1" />
+                    <span>24h Change</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-2xl font-bold ${
+                      marketStats.priceChangePercent24h > 0 ? 'text-green-500' : 
+                      marketStats.priceChangePercent24h < 0 ? 'text-red-500' : ''
+                    }`}>
+                      {marketStats.priceChangePercent24h > 0 ? '+' : ''}
+                      {marketStats.priceChangePercent24h.toFixed(2)}%
+                    </span>
+                    {marketStats.priceChangePercent24h > 0 ? (
+                      <ArrowUp className="h-5 w-5 text-green-500" />
+                    ) : marketStats.priceChangePercent24h < 0 ? (
+                      <ArrowDown className="h-5 w-5 text-red-500" />
+                    ) : (
+                      <Activity className="h-5 w-5" />
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 24h Volume */}
+            <Card className="bg-card hover:shadow-md transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <Activity className="h-4 w-4 mr-1" />
+                    <span>24h Volume</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl font-bold">
+                      {marketStats.volume24h.toFixed(4)}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 24h High */}
+            <Card className="bg-card hover:shadow-md transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <TrendingUp className="h-4 w-4 mr-1" />
+                    <span>24h High</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl font-bold">
+                      {formatPrice(marketStats.high24h)}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 24h Low */}
+            <Card className="bg-card hover:shadow-md transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <TrendingDown className="h-4 w-4 mr-1" />
+                    <span>24h Low</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl font-bold">
+                      {formatPrice(marketStats.low24h)}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Market Overview Section */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mt-2">
+            {/* Price Chart Card */}
+            <Card className="md:col-span-8 overflow-hidden">
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-xl">
+                    {CURRENCY_PAIRS.find(pair => pair.value === selectedSymbol)?.label || selectedSymbol} Market
+                    {livePrice && (
+                      <Badge variant="outline" className="ml-2 font-mono">
+                        {formatPrice(livePrice.price)}
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  <Badge 
+                    variant={marketStats.priceChangePercent24h > 0 ? "success" : 
+                            marketStats.priceChangePercent24h < 0 ? "destructive" : "outline"} 
+                    className="font-mono"
+                  >
+                    {marketStats.priceChangePercent24h > 0 ? '+' : ''}
+                    {marketStats.priceChangePercent24h.toFixed(2)}%
+                  </Badge>
+                </div>
+                <CardDescription>
+                  Recent price movements based on latest trades
+                  {startTime && (
+                    <> starting from {startTime.toLocaleDateString()}</>
+                  )}
+                </CardDescription>
               </CardHeader>
+              
               <CardContent>
-                <div className="h-[350px] w-full relative">
-                  {isChartLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
-                      <div className="animate-spin size-8 border-4 border-primary border-t-transparent rounded-full"></div>
+                <div className="h-[300px]">
+                  {priceData.length > 0 ? (
+                    <PriceChart data={priceData} height={300} />
+                  ) : (
+                    <div className="h-full flex items-center justify-center">
+                      <p className="text-muted-foreground">No trade data available</p>
                     </div>
                   )}
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                      <XAxis 
-                        dataKey="time" 
-                        stroke="#9ca3af" 
-                        tickLine={false}
-                        axisLine={{ stroke: "#374151" }}
-                      />
-                      <YAxis 
-                        stroke="#9ca3af" 
-                        tickLine={false}
-                        axisLine={{ stroke: "#374151" }}
-                        tickFormatter={(value) => `$${value.toLocaleString()}`}
-                        domain={['auto', 'auto']}
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: "#1f2937", 
-                          border: "none",
-                          borderRadius: "8px",
-                          boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)"
-                        }} 
-                        formatter={(value) => [`$${Number(value).toLocaleString()}`, "Price"]}
-                        labelStyle={{ color: "#9ca3af" }}
-                      />
-                      <ReferenceLine 
-                        y={44000} 
-                        stroke="#22c55e" 
-                        strokeDasharray="3 3"
-                        label={{ 
-                          value: "Buy zone", 
-                          position: "insideBottomLeft", 
-                          fill: "#22c55e",
-                          fontSize: 12
-                        }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="price" 
-                        stroke="#3b82f6" 
-                        strokeWidth={3} 
-                        dot={{ r: 2, fill: "#3b82f6" }}
-                        activeDot={{ r: 5, fill: "#3b82f6", stroke: "#1e3a8a" }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
                 </div>
               </CardContent>
-              <CardFooter className="flex justify-between border-t pt-4 text-sm">
-                <span className="text-muted-foreground">Last updated: {new Date().toLocaleString()}</span>
-                <Button variant="outline" size="sm" className="gap-1" onClick={fetchHistoricalData}>
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Refresh Data
-                </Button>
-              </CardFooter>
+            </Card>
+
+            {/* Recent Trades Card */}
+            <Card className="md:col-span-4">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xl">Recent Trades</CardTitle>
+                <CardDescription>
+                  Latest {recentTrades.length} market transactions
+                </CardDescription>
+              </CardHeader>
+              
+              <CardContent className="px-0">
+                <div className="overflow-auto max-h-[300px]">
+                  <table className="w-full">
+                    <thead className="border-b sticky top-0 bg-card z-10">
+                      <tr>
+                        <th className="text-left font-medium px-4 py-2">Time</th>
+                        <th className="text-left font-medium px-4 py-2">Price</th>
+                        <th className="text-left font-medium px-4 py-2">Type</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentTrades.length > 0 ? (
+                        recentTrades.map((trade, index) => (
+                          <tr key={index} className="border-b border-border/50 last:border-none hover:bg-muted/30">
+                            <td className="px-4 py-2 text-sm">
+                              {new Date(parseInt(trade.timestamp)).toLocaleTimeString()}
+                            </td>
+                            <td className="px-4 py-2 font-mono text-sm">
+                              {parseFloat(trade.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-4 py-2">
+                              <div className={`inline-flex items-center text-xs font-medium px-2 py-1 rounded-full ${
+                                trade.is_buy 
+                                  ? 'bg-green-500/20 text-green-600 dark:text-green-400' 
+                                  : 'bg-red-500/20 text-red-600 dark:text-red-400'
+                              }`}>
+                                {trade.is_buy ? (
+                                  <><TrendingUp className="h-3 w-3 mr-1" /> Buy</>
+                                ) : (
+                                  <><TrendingDown className="h-3 w-3 mr-1" /> Sell</>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">
+                            No recent trades available
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
             </Card>
           </div>
 
-          {/* Right column - Market Pairs & Model Performance */}
-          <div className="flex flex-col gap-6">
-            <Card className="bg-card dark:bg-slate-900 border-border">
-              <CardHeader>
-                <CardTitle className="text-lg">Market Pairs</CardTitle>
+          {/* Quick Navigation Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="hover:shadow-md transition-shadow dark:bg-slate-900">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-xl">Analytics</CardTitle>
+                <BarChart4 className="h-5 w-5 text-muted-foreground" />
               </CardHeader>
-              <CardContent className="pt-0">
-                <ul className="space-y-3">
-                  {marketData.map((item, index) => (
-                    <li key={index} className="flex justify-between items-center">
-                      <div>
-                        <p className="font-medium">{item.pair}</p>
-                        <p className="text-sm text-muted-foreground">${item.price.toLocaleString()}</p>
-                      </div>
-                      <Badge 
-                        className={cn(
-                          "h-6",
-                          item.change > 0 
-                            ? "bg-green-500/20 text-green-500 hover:bg-green-500/30" 
-                            : "bg-red-500/20 text-red-500 hover:bg-red-500/30"
-                        )}
-                      >
-                        {item.change > 0 ? (
-                          <TrendingUp className="h-3 w-3 mr-1" />
-                        ) : (
-                          <TrendingDown className="h-3 w-3 mr-1" />
-                        )}
-                        {item.change > 0 ? "+" : ""}{item.change}%
-                      </Badge>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-              <CardFooter className="border-t pt-4">
-                <Button variant="ghost" size="sm" className="w-full">
-                  View All Markets
-                </Button>
-              </CardFooter>
-            </Card>
-
-            <Card className="bg-card dark:bg-slate-900 border-border">
-              <CardHeader>
-                <CardTitle className="text-lg">Model Performance</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <ul className="space-y-3">
-                  {modelData.map((model, index) => (
-                    <li key={index} className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                          <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center">
-                            <Bot className="h-4 w-4 text-primary" />
-                          </div>
-                          <p className="font-medium">{model.name}</p>
-                        </div>
-                        <Badge 
-                          className="bg-blue-500/20 text-blue-500 hover:bg-blue-500/30"
-                        >
-                          {model.trades} trades
-                        </Badge>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <div className="flex items-center">
-                          <div className="w-full bg-muted rounded-full h-1.5 mr-2">
-                            <div 
-                              className="bg-primary h-1.5 rounded-full" 
-                              style={{ width: `${model.winRate}%` }}
-                            ></div>
-                          </div>
-                          <span>{model.winRate}% win rate</span>
-                        </div>
-                        <span className="text-green-500">+{model.profit}%</span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-              <CardFooter className="border-t pt-4">
-                <Link href="/models" className="w-full">
-                  <Button size="sm" className="w-full gap-2">
-                    <BarChart3 className="h-4 w-4" />
-                    View Model Details
+              <CardContent>
+                <CardDescription className="pb-4">
+                  Analyze historical data and train models
+                </CardDescription>
+                <Link href="/analytics">
+                  <Button className="w-full group">
+                    Go to Analytics
+                    <ArrowUpRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                   </Button>
                 </Link>
-              </CardFooter>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-md transition-shadow dark:bg-slate-900">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-xl">Models</CardTitle>
+                <TrendingUp className="h-5 w-5 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="pb-4">
+                  Manage and test your trading models
+                </CardDescription>
+                <Link href="/models">
+                  <Button className="w-full group">
+                    View Models
+                    <ArrowUpRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-md transition-shadow dark:bg-slate-900">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-xl">Production</CardTitle>
+                <Play className="h-5 w-5 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="pb-4">
+                  Run trading bots in production
+                </CardDescription>
+                <Link href="/production">
+                  <Button className="w-full group">
+                    Start Trading
+                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </Button>
+                </Link>
+              </CardContent>
             </Card>
           </div>
-        </div>
-
-        {/* Quick Access Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <QuickAccessCard
-            title="Analytics"
-            icon={BarChart2}
-            description="Train and test your models"
-            content="Select and label data points on crypto price charts to train your models."
-            href="/analytics"
-          />
-          <QuickAccessCard
-            title="Models"
-            icon={Settings}
-            description="Manage your trading models"
-            content="Run and test existing models from the backend model library."
-            href="/models"
-          />
-          <QuickAccessCard
-            title="Production"
-            icon={Play}
-            description="Run your models in live trading"
-            content="Activate your models to execute trades on Luno as market data arrives."
-            href="/production"
-          />
-        </div>
-      </div>
+        </>
+      )}
     </main>
-  );
-}
-
-// Dropdown selector component for chart timeframes
-function DropdownSelector({ options, defaultValue }) {
-  const [selected, setSelected] = useState(defaultValue);
-  const [mounted, setMounted] = useState(false);
-  
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  
-  if (!mounted) return null;
-  
-  return (
-    <div className="relative">
-      <select 
-        value={selected}
-        onChange={(e) => setSelected(e.target.value)}
-        className="appearance-none bg-transparent border border-border rounded-md py-1 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-      >
-        {options.map(option => (
-          <option key={option} value={option}>{option}</option>
-        ))}
-      </select>
-      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2">
-        <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </div>
-    </div>
-  );
-}
-
-// Quick access card component
-function QuickAccessCard({ title, icon: Icon, description, content, href }) {
-  return (
-    <Card className="bg-card dark:bg-slate-900 hover:bg-accent/50 transition-all group border-border relative overflow-hidden">
-      <div className="absolute top-0 right-0 size-64 bg-gradient-to-br from-primary/5 to-transparent rounded-full -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          {title}
-          <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-            <Icon className="h-4 w-4 text-primary" />
-          </div>
-        </CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="mb-4">{content}</p>
-        <Link href={href}>
-          <Button className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-            <span>Go to {title}</span>
-            <ArrowUpRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </Button>
-        </Link>
-      </CardContent>
-    </Card>
   );
 }
