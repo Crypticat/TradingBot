@@ -5,16 +5,16 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
-  ArrowDown, 
-  ArrowRight, 
-  ArrowUp, 
-  ArrowUpRight, 
-  BarChart4, 
-  Clock, 
-  Play, 
-  TrendingDown, 
-  TrendingUp, 
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  ArrowUpRight,
+  BarChart4,
+  Clock,
+  Play,
+  TrendingDown,
+  TrendingUp,
   DollarSign,
   Activity,
   Percent,
@@ -24,18 +24,18 @@ import {
 import { fetchLivePrice, fetchTradeData } from "@/services/api";
 import { PriceChart } from "@/components/price-chart";
 import { LoadingSpinner } from "@/components/loading-spinner";
-import { 
-  Select, 
-  SelectContent, 
-  SelectGroup, 
-  SelectItem, 
-  SelectLabel, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { 
+import {
   Form,
   FormControl,
   FormField,
@@ -65,7 +65,6 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState("XBTZAR");
-  const [tradeLimit, setTradeLimit] = useState("20");
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [marketStats, setMarketStats] = useState({
     volume24h: 0,
@@ -79,24 +78,28 @@ export default function Home() {
   // Calculate market stats from trade data
   const calculateMarketStats = (trades: any[]) => {
     if (!trades || trades.length === 0) return;
-    
+
     // Sort trades by timestamp (newest first)
-    const sortedTrades = [...trades].sort((a, b) => parseInt(b.timestamp) - parseInt(a.timestamp));
-    
+    const sortedTrades = [...trades].sort((a, b) => {
+      const dateA = new Date(a.timestamp);
+      const dateB = new Date(b.timestamp);
+      return dateB.getTime() - dateA.getTime();
+    });
+
     // Calculate 24h volume
     const volume24h = sortedTrades.reduce((sum, trade) => sum + parseFloat(trade.volume), 0);
-    
+
     // Find high and low price in the last 24h
     const prices = sortedTrades.map(trade => parseFloat(trade.price));
     const high24h = Math.max(...prices);
     const low24h = Math.min(...prices);
-    
+
     // Calculate price change (current price - earliest price)
     const latestPrice = parseFloat(sortedTrades[0].price);
     const earliestPrice = parseFloat(sortedTrades[sortedTrades.length - 1].price);
     const priceChange24h = latestPrice - earliestPrice;
     const priceChangePercent24h = (priceChange24h / earliestPrice) * 100;
-    
+
     setMarketStats({
       volume24h,
       priceChange24h,
@@ -110,48 +113,51 @@ export default function Home() {
   const loadData = async () => {
     try {
       setIsRefreshing(true);
-      
+
       // Build parameters for the API call
-      const params: any = {
-        limit: Math.max(1, parseInt(tradeLimit)) // Ensure limit is at least 1
-      };
-      
+      const params: any = {};
+
       // Add start time parameter if selected
       if (startTime) {
         // Convert Date object to timestamp string in milliseconds
         const startTimeMs = startTime.getTime();
         params.since = startTimeMs.toString();
       }
-      
+
       // Fetch recent trades using the trade endpoint with parameters
       const tradeResponse = await fetchTradeData(selectedSymbol, params);
-      
+
       if (tradeResponse && tradeResponse.trades) {
-        // Get the most recent trades
+        // Get all recent trades without limiting
         const trades = tradeResponse.trades;
-        setRecentTrades(trades.slice(0, parseInt(tradeLimit)));
-        
+        setRecentTrades(trades);
+
         // Calculate market statistics
         calculateMarketStats(trades);
-        
+
         // Convert trades to price chart format
         // Sort trades by timestamp (oldest first)
-        const sortedTrades = [...trades].sort((a, b) => parseInt(a.timestamp) - parseInt(b.timestamp));
-        
+        const sortedTrades = [...trades].sort((a, b) => {
+          // Parse ISO date strings for proper comparison
+          const dateA = new Date(a.timestamp);
+          const dateB = new Date(b.timestamp);
+          return dateA.getTime() - dateB.getTime();
+        });
+
         // Transform trades data to price chart format
         const chartData = sortedTrades.map(trade => ({
-          time: new Date(parseInt(trade.timestamp)).toLocaleString(),
+          time: new Date(trade.timestamp).toLocaleString(),
           price: parseFloat(trade.price),
           volume: parseFloat(trade.volume),
         }));
-        
+
         setPriceData(chartData);
       }
-      
+
       // Fetch current live price
       const livePriceData = await fetchLivePrice(selectedSymbol);
       setLivePrice(livePriceData);
-      
+
     } catch (err) {
       console.error("Error loading data:", err);
       setError("Failed to load market data. Please try again later.");
@@ -164,15 +170,15 @@ export default function Home() {
   // Load data on component mount and when configuration changes
   useEffect(() => {
     loadData();
-    
+
     // Set up a timer to refresh data every 30 seconds
     const refreshInterval = setInterval(() => {
       loadData();
     }, 30000);
-    
+
     // Clean up interval on component unmount
     return () => clearInterval(refreshInterval);
-  }, [selectedSymbol, tradeLimit, startTime]);
+  }, [selectedSymbol, startTime]);
 
   // Format price with proper currency symbol
   const formatPrice = (price: number) => {
@@ -187,16 +193,6 @@ export default function Home() {
   const handleSymbolChange = (value: string) => {
     setSelectedSymbol(value);
     setIsLoading(true);
-  };
-
-  // Handle trade limit change
-  const handleLimitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    // Only allow positive integers greater than 0
-    if (/^\d*$/.test(value)) {
-      const numValue = parseInt(value) || 1; // Default to 1 if parsed value is 0 or NaN
-      setTradeLimit(numValue.toString());
-    }
   };
 
   // Handle date change for start time
@@ -240,24 +236,7 @@ export default function Home() {
                   </SelectContent>
                 </Select>
               </div>
-              
-              <div className="w-32">
-                <div className="flex flex-col space-y-1.5">
-                  <label htmlFor="tradeLimit" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Trade Limit
-                  </label>
-                  <Input
-                    id="tradeLimit"
-                    value={tradeLimit}
-                    onChange={handleLimitChange}
-                    className="w-full"
-                    placeholder="Number of trades"
-                    min="1"
-                    type="number"
-                  />
-                </div>
-              </div>
-              
+
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-[240px] justify-start text-left font-normal">
@@ -278,10 +257,10 @@ export default function Home() {
                   />
                 </PopoverContent>
               </Popover>
-              
+
               {startTime && (
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="icon"
                   onClick={() => setStartTime(null)}
                   title="Clear date filter"
@@ -290,10 +269,10 @@ export default function Home() {
                 </Button>
               )}
             </div>
-            
-            <Button 
-              onClick={handleRefresh} 
-              variant="outline" 
+
+            <Button
+              onClick={handleRefresh}
+              variant="outline"
               className="gap-2"
               disabled={isRefreshing}
             >
@@ -341,7 +320,7 @@ export default function Home() {
 
             {/* 24h Change */}
             <Card className={`bg-card hover:shadow-md transition-shadow ${
-              marketStats.priceChangePercent24h > 0 ? 'border-green-500/50' : 
+              marketStats.priceChangePercent24h > 0 ? 'border-green-500/50' :
               marketStats.priceChangePercent24h < 0 ? 'border-red-500/50' : ''
             }`}>
               <CardContent className="p-6">
@@ -352,7 +331,7 @@ export default function Home() {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className={`text-2xl font-bold ${
-                      marketStats.priceChangePercent24h > 0 ? 'text-green-500' : 
+                      marketStats.priceChangePercent24h > 0 ? 'text-green-500' :
                       marketStats.priceChangePercent24h < 0 ? 'text-red-500' : ''
                     }`}>
                       {marketStats.priceChangePercent24h > 0 ? '+' : ''}
@@ -436,9 +415,9 @@ export default function Home() {
                       </Badge>
                     )}
                   </CardTitle>
-                  <Badge 
-                    variant={marketStats.priceChangePercent24h > 0 ? "success" : 
-                            marketStats.priceChangePercent24h < 0 ? "destructive" : "outline"} 
+                  <Badge
+                    variant={marketStats.priceChangePercent24h > 0 ? "success" :
+                            marketStats.priceChangePercent24h < 0 ? "destructive" : "outline"}
                     className="font-mono"
                   >
                     {marketStats.priceChangePercent24h > 0 ? '+' : ''}
@@ -452,7 +431,7 @@ export default function Home() {
                   )}
                 </CardDescription>
               </CardHeader>
-              
+
               <CardContent>
                 <div className="h-[300px]">
                   {priceData.length > 0 ? (
@@ -474,7 +453,7 @@ export default function Home() {
                   Latest {recentTrades.length} market transactions
                 </CardDescription>
               </CardHeader>
-              
+
               <CardContent className="px-0">
                 <div className="overflow-auto max-h-[300px]">
                   <table className="w-full">
@@ -490,15 +469,15 @@ export default function Home() {
                         recentTrades.map((trade, index) => (
                           <tr key={index} className="border-b border-border/50 last:border-none hover:bg-muted/30">
                             <td className="px-4 py-2 text-sm">
-                              {new Date(parseInt(trade.timestamp)).toLocaleTimeString()}
+                              {new Date(trade.timestamp).toLocaleTimeString()}
                             </td>
                             <td className="px-4 py-2 font-mono text-sm">
                               {parseFloat(trade.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td className="px-4 py-2">
                               <div className={`inline-flex items-center text-xs font-medium px-2 py-1 rounded-full ${
-                                trade.is_buy 
-                                  ? 'bg-green-500/20 text-green-600 dark:text-green-400' 
+                                trade.is_buy
+                                  ? 'bg-green-500/20 text-green-600 dark:text-green-400'
                                   : 'bg-red-500/20 text-red-600 dark:text-red-400'
                               }`}>
                                 {trade.is_buy ? (

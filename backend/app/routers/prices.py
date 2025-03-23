@@ -225,10 +225,9 @@ async def get_historical_price_data(
 async def get_trade_data(
     symbol: str = Query(..., description="Trading pair symbol (e.g., XBTZAR)"),
     since: Optional[str] = Query(None,
-        description="Fetch trades after this timestamp (ISO format or Date object) "+
+        description="Fetch trades up to this timestamp (< 24h) (ISO format or Date object) "+
         "[Example Timestamp: 2023-01-01T12:00:00Z or Unix milliseconds: 1742594400000]"),
-    limit: Optional[int] = Query(None,
-        description="Maximum number of trades to return (set to None for all trades)")
+
 ):
     """
     Get recent trades for a cryptocurrency pair
@@ -277,7 +276,7 @@ async def get_trade_data(
                     "Failed to get trades from Luno API: %s. Falling back to mock data.", e)
 
         # If we couldn't get data from Luno, generate mock data
-        mock_trades = generate_mock_trades(symbol, limit or 100)  # Default to 100 for mock data
+        mock_trades = generate_mock_trades(symbol, 100)  # Default to 100 for mock data
         return {
             "timestamp": datetime.now().isoformat(),
             "pair": symbol,

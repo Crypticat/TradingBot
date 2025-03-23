@@ -273,18 +273,18 @@ export interface TradeResponse {
 /**
  * Fetch recent trades for a cryptocurrency pair
  * @param symbol The trading pair symbol (e.g., XBTZAR)
- * @param params Optional parameters (since timestamp as ISO string or Date object, limit)
+ * @param params Optional parameters (since timestamp as ISO string or Date object)
  * @returns Trade data response
  */
 export async function fetchTradeData(
   symbol: string,
-  params: { since?: string | Date, limit?: number } = {}
+  params: { since?: string | Date } = {}
 ): Promise<TradeResponse> {
   try {
     const queryParams = new URLSearchParams({
       symbol,
     });
-    
+
     // Add since parameter if provided (ensure it's a string)
     if (params.since) {
       // If it's a Date object, convert to ISO string
@@ -295,12 +295,7 @@ export async function fetchTradeData(
         queryParams.append('since', params.since);
       }
     }
-    
-    // Add limit parameter if provided
-    if (params.limit) {
-      queryParams.append('limit', params.limit.toString());
-    }
-    
+
     const response = await fetch(`${API_BASE_URL}/api/prices/trades?${queryParams}`);
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);

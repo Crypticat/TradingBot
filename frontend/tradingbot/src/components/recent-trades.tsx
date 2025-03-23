@@ -67,14 +67,14 @@ export function RecentTrades({ symbol }: { symbol: string }) {
                   </td>
                 </tr>
               ) : (
-                trades.slice(0, 10).map((trade, index) => (
+                trades.map((trade, index) => (
                   <tr key={index} className="border-b border-border hover:bg-muted/40 transition-colors">
-                    <td className="p-2">{new Date(parseInt(trade.timestamp)).toLocaleTimeString()}</td>
+                    <td className="p-2">{new Date(trade.timestamp).toLocaleTimeString()}</td>
                     <td className="p-2">${parseFloat(trade.price).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                     <td className="p-2">{parseFloat(trade.volume).toFixed(6)}</td>
                     <td className="p-2">
-                      <Badge className={trade.is_buy 
-                        ? "bg-green-500/20 text-green-500 hover:bg-green-500/30" 
+                      <Badge className={trade.is_buy
+                        ? "bg-green-500/20 text-green-500 hover:bg-green-500/30"
                         : "bg-red-500/20 text-red-500 hover:bg-red-500/30"}>
                         {trade.is_buy ? (
                           <><TrendingUp className="h-3 w-3 mr-1" /> Buy</>
