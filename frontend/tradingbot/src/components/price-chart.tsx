@@ -86,7 +86,7 @@ export function PriceChart({
     if (leftZoomIndex !== null && rightZoomIndex !== null && data.length > 0) {
       const startIndex = Math.min(leftZoomIndex, rightZoomIndex);
       const endIndex = Math.max(leftZoomIndex, rightZoomIndex);
-      
+
       // Check if indices are within valid range
       if (startIndex < data.length && endIndex < data.length) {
         return {

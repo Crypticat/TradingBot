@@ -151,8 +151,12 @@ async def get_candle_data(
                     api_secret=api_keys["luno_api_secret"]
                 )
 
+                # Convert since in ms since epoch to human-readable format
+                since_timestamp = (datetime.fromtimestamp(int(since_ms) / 1000).isoformat()
+                                   if since_ms else None)
+
                 logger.info("Getting candles for %s with duration %ss, since: %s",
-                             symbol, interval_seconds, since_ms)
+                             symbol, interval_seconds, since_timestamp)
 
                 # Call Luno API with the exact parameters it expects
                 candle_data = luno_client.get_candles(
@@ -250,7 +254,11 @@ async def get_trade_data(
 
                 # The timestamp conversion is now handled in the LunoClientWrapper
                 # so we can pass the human-readable timestamp directly
-                logger.info("Getting trades for %s since %s", symbol, since)
+                # Convert since in ms since epoch to human-readable format
+                since_timestamp = (datetime.fromtimestamp(int(since) / 1000).isoformat()
+                                   if since else None)
+
+                logger.info("Getting trades for %s since %s", symbol, since_timestamp)
 
                 # Get recent trades from Luno
                 trades_response = luno_client.get_trades(pair=symbol, since=since)
