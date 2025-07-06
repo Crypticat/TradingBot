@@ -30,6 +30,7 @@ Frontend:
 Backend:
 - Use the luno-python library for interacting with luno
 - Please conform to Pylinting standards on Python code
+- Use SQLite for the database under the `backend/app/db/app.db` directory
 
 # Coding Best Practices Guide
 
