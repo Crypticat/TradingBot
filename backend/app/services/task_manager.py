@@ -52,8 +52,8 @@ class TickerFetcherExecutor(TaskExecutor):
             config = self.task.config or {}
             symbols = config.get('symbols', ['XBTZAR', 'ETHZAR'])
 
-            # Initialize Luno API
-            luno_api = LunoAPI()
+            # Initialize Luno API for public endpoints (no credentials needed)
+            luno_api = LunoAPI(api_key=None, api_secret=None)
 
             # Fetch ticker data for each symbol
             ticker_data = {}
@@ -167,6 +167,12 @@ class TaskManager:
             # Convert config to JSON string
             config_json = json.dumps(task_data.config) if task_data.config else None
 
+            # Handle task_type - it might be a string or enum
+            if isinstance(task_data.task_type, str):
+                task_type_value = task_data.task_type
+            else:
+                task_type_value = task_data.task_type.value
+
             query = '''
                 INSERT INTO tasks (name, description, task_type, auto_start, interval_seconds, config)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -174,7 +180,7 @@ class TaskManager:
             params = (
                 task_data.name,
                 task_data.description,
-                task_data.task_type.value,
+                task_type_value,
                 task_data.auto_start,
                 task_data.interval_seconds,
                 config_json
@@ -497,13 +503,19 @@ class TaskManager:
     def _create_task_log(self, log_data: TaskLogCreate) -> Optional[int]:
         """Create a task log entry."""
         try:
+            # Handle status - it might be a string or enum
+            if isinstance(log_data.status, str):
+                status_value = log_data.status
+            else:
+                status_value = log_data.status.value
+
             query = '''
                 INSERT INTO task_logs (task_id, status, message, started_at, completed_at, duration_ms, error_details)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             '''
             params = (
                 log_data.task_id,
-                log_data.status.value,
+                status_value,
                 log_data.message,
                 log_data.started_at,
                 log_data.completed_at,

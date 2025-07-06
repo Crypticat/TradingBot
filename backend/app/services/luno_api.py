@@ -4,6 +4,7 @@ Service for integrating with the Luno API using luno-python library
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta, timezone
 import logging
+import requests
 import luno_python.client as luno
 # pylint: disable=broad-exception-raised
 
@@ -17,14 +18,34 @@ class LunoAPI:
     Luno API client for trading cryptocurrency using luno-python library
     """
 
-    def __init__(self, api_key: str, api_secret: str):
-        """Initialize with API credentials"""
+    def __init__(self, api_key: Optional[str] = None, api_secret: Optional[str] = None):
+        """Initialize with optional API credentials for authenticated endpoints"""
         self.api_key = api_key
         self.api_secret = api_secret
-        self.client = luno.Client(api_key_id=api_key, api_key_secret=api_secret)
+        self.base_url = "https://api.luno.com/api/1"
+
+        # Create authenticated client only if credentials provided
+        if api_key and api_secret:
+            self.client = luno.Client(api_key_id=api_key, api_key_secret=api_secret)
+        else:
+            self.client = None
+
+    def _make_public_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+        """Make a public API request using requests library"""
+        try:
+            url = f"{self.base_url}/{endpoint}"
+            response = requests.get(url, params=params or {}, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            logger.error("Error making public request to %s: %s", endpoint, str(exc))
+            raise Exception(f"Error connecting to Luno API: {str(exc)}") from exc
 
     def get_balance(self) -> Dict[str, Any]:
-        """Get account balances"""
+        """Get account balances (requires authentication)"""
+        if not self.client:
+            raise Exception("API credentials required for balance information")
+
         try:
             return self.client.get_balances()
         except Exception as exc:
@@ -32,25 +53,25 @@ class LunoAPI:
             raise Exception(f"Error connecting to Luno API: {str(exc)}") from exc
 
     def get_ticker(self, pair: str) -> Dict[str, Any]:
-        """Get ticker for a trading pair"""
+        """Get ticker for a trading pair (public endpoint)"""
         try:
-            return self.client.get_ticker(pair=pair)
+            return self._make_public_request("ticker", {"pair": pair})
         except Exception as exc:
             logger.error("Error getting ticker for %s: %s", pair, str(exc))
             raise Exception(f"Error connecting to Luno API: {str(exc)}") from exc
 
     def get_tickers(self) -> Dict[str, Any]:
-        """Get tickers for all trading pairs"""
+        """Get tickers for all trading pairs (public endpoint)"""
         try:
-            return self.client.get_tickers()
+            return self._make_public_request("tickers")
         except Exception as exc:
             logger.error("Error getting tickers: %s", str(exc))
             raise Exception(f"Error connecting to Luno API: {str(exc)}") from exc
 
     def get_order_book(self, pair: str) -> Dict[str, Any]:
-        """Get order book for a trading pair"""
+        """Get order book for a trading pair (public endpoint)"""
         try:
-            return self.client.get_order_book(pair=pair)
+            return self._make_public_request("orderbook", {"pair": pair})
         except Exception as exc:
             logger.error("Error getting order book for %s: %s", pair, str(exc))
             raise Exception(f"Error connecting to Luno API: {str(exc)}") from exc
@@ -86,13 +107,18 @@ class LunoAPI:
                 logger.warning("Since timestamp: %s", since_dt.isoformat())
 
         try:
+            if not self.client:
+                raise Exception("API credentials required for trades data")
             return self.client.list_trades(pair=pair, since=since_ms)
         except Exception as exc:
             logger.error("Error getting trades for %s: %s", pair, str(exc))
             raise Exception(f"Error connecting to Luno API: {str(exc)}") from exc
 
     def get_orders(self, state: Optional[str] = None, pair: Optional[str] = None) -> Dict[str, Any]:
-        """Get orders for the account"""
+        """Get orders for the account (requires authentication)"""
+        if not self.client:
+            raise Exception("API credentials required for orders data")
+
         try:
             return self.client.list_orders(state=state, pair=pair)
         except Exception as exc:
@@ -177,9 +203,9 @@ class LunoAPI:
             raise Exception(f"Error connecting to Luno API: {str(exc)}") from exc
 
     def get_markets(self) -> List[Dict[str, Any]]:
-        """Get available markets (trading pairs)"""
+        """Get available markets (trading pairs) - public endpoint"""
         try:
-            response = self.client.markets()
+            response = self._make_public_request("markets")
             return response.get('markets', [])
         except Exception as exc:
             logger.error("Error getting markets: %s", str(exc))
