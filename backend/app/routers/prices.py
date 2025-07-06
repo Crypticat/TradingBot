@@ -4,7 +4,14 @@ from datetime import datetime, timedelta
 import random
 import logging
 from fastapi import APIRouter, HTTPException, Query
-from luno_python.client import Client as LunoClient
+try:
+    from luno_python.client import Client as LunoClient
+except ImportError:
+    print("Luno Python client not found. Attempting auto-install...")
+    import subprocess
+    import sys
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "luno-python"])
+    from luno_python.client import Client as LunoClient
 # pylint: disable=relative-beyond-top-level, broad-exception-caught
 from ..models.schemas import CryptoPrice
 from ..utils.storage import PriceStorage, ApiKeyStorage

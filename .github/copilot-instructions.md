@@ -72,17 +72,14 @@ This document outlines coding best practices and conventions for our project, co
 * **Composition:** Build complex UI elements by composing multiple shadcn/ui components together (e.g., using `Dialog` with `Form` components).
 * **Accessibility:** Rely on the built-in accessibility features provided by Radix UI (which shadcn/ui uses internally), but always test for accessibility.
 
-## Backend: Python & FastAPI
-
-* **Project Structure:** Organize your FastAPI project logically (e.g., using routers for different domains, separating models, services, database logic).
-* **Async/Await:** Use `async def` for path operation functions and any I/O-bound operations (database calls, network requests) to leverage FastAPI's asynchronous capabilities. Use `await` correctly.
-* **Pydantic:** Use Pydantic models extensively for request body validation, response serialization, and settings management. Define clear, typed data structures.
-* **Dependency Injection:** Utilize FastAPI's dependency injection system for reusable logic, database sessions, authentication, etc.
-* **Routers (`APIRouter`):** Split endpoints into multiple files using `APIRouter` for better organization as the application grows.
-* **Error Handling:** Use FastAPI's `HTTPException` for standard HTTP errors. Implement custom exception handlers for application-specific errors.
-* **Type Hinting:** Use Python type hints consistently for function signatures and variables. This improves code clarity and enables static analysis.
-* **PEP 8:** Follow the PEP 8 style guide for Python code (use linters like Flake8 and formatters like Black).
-* **Testing:** Use `pytest` and FastAPI's `TestClient` to write effective tests for your endpoints and business logic.
+## Backend: Python
+ - Avoid importing modules that are not used
+ - Order imports according to PEP8
+ - Add method docstrings according to Pylint C0116
+ - Add class docstrings according to Pylint C0115
+ - Add module docstrings according to Pylint C0114
+ - If missing, add final missing line to the end of the file to Pylint C0304
+ - Avoid lines being longer than 100 characters according to Pylint C0301
 
 ## WebSockets (Frontend - JS/Next.js & Backend - Python/FastAPI)
 
