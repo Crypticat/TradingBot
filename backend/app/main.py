@@ -6,9 +6,10 @@ from contextlib import asynccontextmanager
 
 # Fix imports to use relative imports
 from .routers import prices, models, trading, account, tasks
+from .config import get_config, configure_logging
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging using the centralized configuration
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -61,10 +62,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Get configuration
+config = get_config()
+
 # Configure CORS to allow requests from the frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Add your frontend URL
+    allow_origins=config.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -84,6 +88,20 @@ async def root():
         "status": "online",
         "message": "Luno Trading Bot API with Task Management is running",
         "version": "0.1.0"
+    })
+
+@app.get("/config", tags=["config"])
+async def get_app_config():
+    """Get current application configuration"""
+    config = get_config()
+    return JSONResponse(content={
+        "log_level": config.get_log_level_name(),
+        "host": config.host,
+        "port": config.port,
+        "reload": config.reload,
+        "cors_origins": config.cors_origins,
+        "db_path": config.db_path,
+        "task_manager_enabled": config.task_manager_enabled
     })
 
 @app.get("/health", tags=["health"])
@@ -111,4 +129,10 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    config = get_config()
+    uvicorn.run(
+        "app.main:app",
+        host=config.host,
+        port=config.port,
+        reload=config.reload
+    )
