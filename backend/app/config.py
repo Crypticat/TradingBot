@@ -7,6 +7,15 @@ for the entire application, including logging configuration.
 import os
 import logging
 
+# Try to load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    # Load .env file from the project root
+    load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
+except ImportError:
+    # python-dotenv not installed, continue without .env support
+    pass
+
 
 class Config:
     """Configuration class for the TradingBot backend."""
